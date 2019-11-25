@@ -1,0 +1,4 @@
+cd /disk/scratch/antreas
+source .bashrc
+cd /disk/scratch/antreas/HowToTrainYourMAMLPytorch_research_edition/cluster_experiment_scripts/
+source .bashrc; cd HowToTrainYourMAMLPytorch_research_edition/cluster_experiment_scripts/; bash intrinsic_target_loss_mini-imagenet_maml++_mini-imagenet_5_way_1_shot_48_param_preds_task_conditioned_2_remote_machine_few_shot.sh 2
