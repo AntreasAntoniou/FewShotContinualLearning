@@ -561,193 +561,193 @@ class VGGActivationNormNetwork(nn.Module):
                             param.grad.zero_()
                             params[name].grad = None
 
-class VGGActivationNormNetworkWithAttention(nn.Module):
-    def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
-                 num_stages, num_filters, num_support_set_steps, num_target_set_steps):
-        """
-        Builds a multilayer convolutional network. It also provides functionality for passing external parameters to be
-        used at inference time. Enables inner loop optimization readily.
-        :param im_shape: The input image batch shape.
-        :param num_output_classes: The number of output classes of the network.
-        :param args: A named tuple containing the system's hyperparameters.
-        :param device: The device to run this on.
-        :param meta_classifier: A flag indicating whether the system's meta-learning (inner-loop) functionalities should
-        be enabled.
-        """
-        super(VGGActivationNormNetworkWithAttention, self).__init__()
-
-        self.total_layers = 0
-        self.upscale_shapes = []
-        self.num_filters = num_filters
-        self.num_stages = num_stages
-        self.input_shape = input_shape
-        self.use_channel_wise_attention = use_channel_wise_attention
-        self.num_output_classes = num_output_classes
-        self.num_support_set_steps = num_support_set_steps
-        self.num_target_set_steps = num_target_set_steps
-        self.build_network()
-
-    def build_network(self):
-        """
-        Builds the network before inference is required by creating some dummy inputs with the same input as the
-        self.im_shape tuple. Then passes that through the network and dynamically computes input shapes and
-        sets output shapes for each layer.
-        """
-        x = torch.zeros(self.input_shape)
-        out = x
-        self.layer_dict = nn.ModuleDict()
-
-        for i in range(self.num_stages):
-
-            if self.use_channel_wise_attention:
-                out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
-                out_channels = out_channels.view(out_channels.shape[0], -1)
-
-                self.layer_dict['channel_wise_attention_linear_pred_network_{}'.format(i)] = MetaLinearLayer(
-                    input_shape=out_channels.shape, num_filters=out_channels.shape[-1], use_bias=True)
-                channel_wise_attention_regions = self.layer_dict[
-                    'channel_wise_attention_linear_pred_network_{}'.format(i)].forward(
-                    out_channels, params=None)
-
-                channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
-                # print(out.shape, channel_wise_attention_regions.shape)
-                out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
-            # print(i, out.shape)
-            self.layer_dict['conv_{}'.format(i)] = MetaConvNormLayerLeakyReLU(input_shape=out.shape,
-                                                                              num_filters=self.num_filters,
-                                                                              kernel_size=3, stride=1,
-                                                                              padding=1,
-                                                                              use_bias=True,
-                                                                              groups=1, per_step_bn_statistics=True,
-                                                                              num_support_set_steps=self.num_support_set_steps,
-                                                                              num_target_set_steps=self.num_target_set_steps)
-
-            out = self.layer_dict['conv_{}'.format(i)](out, training=True, num_step=0)
-
-            out = F.avg_pool2d(input=out, kernel_size=2)
-
-        if self.use_channel_wise_attention:
-            out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
-
-            out_channels = out_channels.view(out_channels.shape[0], -1)
-
-            self.layer_dict['channel_wise_attention_linear_pred_network_out'] = MetaLinearLayer(
-                input_shape=out_channels.shape, num_filters=out_channels.shape[-1], use_bias=True)
-
-            channel_wise_attention_regions = self.layer_dict[
-                'channel_wise_attention_linear_pred_network_out'].forward(
-                out_channels, params=None)
-
-            channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
-            out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
-
-        out = F.avg_pool2d(out, out.shape[-1])
-        out = out.view((out.shape[0], -1))
-
-        self.layer_dict['linear'] = MetaLinearLayer(input_shape=(out.shape[0], np.prod(out.shape[1:])),
-                                                    num_filters=self.num_output_classes, use_bias=True)
-
-        out = self.layer_dict['linear'](out)
-        print("VGGNetwork build", out.shape)
-
-    def forward(self, x, num_step, dropout_training=None, params=None, training=False,
-                backup_running_statistics=False, return_features=False):
-        """
-        Forward propages through the network. If any params are passed then they are used instead of stored params.
-        :param x: Input image batch.
-        :param num_step: The current inner loop step number
-        :param params: If params are None then internal parameters are used. If params are a dictionary with keys the
-         same as the layer names then they will be used instead.
-        :param training: Whether this is training (True) or eval time.
-        :param backup_running_statistics: Whether to backup the running statistics in their backup store. Which is
-        then used to reset the stats back to a previous state (usually after an eval loop, when we want to throw away stored statistics)
-        :return: Logits of shape b, num_output_classes.
-        """
-        param_dict = dict()
-
-        if params is not None:
-            params = {key: value for key, value in params.items()}
-            # print([key for key, value in param_dict.items()])
-            param_dict = extract_top_level_dict(current_dict=params)
-
-        for name, param in list(self.layer_dict.named_parameters()) + list(self.layer_dict.items()):
-            path_bits = name.split(".")
-            layer_name = path_bits[0]
-            if layer_name not in param_dict:
-                param_dict[layer_name] = None
-
-        out = x
-
-        # print([key for key, value in param_dict.items() if value is not None])
-
-        for i in range(self.num_stages):
-
-            if self.use_channel_wise_attention:
-                out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
-                b, c = out_channels.shape[:2]
-                out_channels = out_channels.view(out_channels.shape[0], c)
-                # if param_dict['channel_wise_attention_linear_pred_network_{}'.format(i)] is not None:
-                # print(out_channels.shape, [(key, value.shape) for key, value in param_dict['channel_wise_attention_linear_pred_network_{}'.format(i)].items()])
-                channel_wise_attention_regions = self.layer_dict[
-                    'channel_wise_attention_linear_pred_network_{}'.format(i)].forward(
-                    out_channels, params=param_dict['channel_wise_attention_linear_pred_network_{}'.format(i)])
-                channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
-                # print(out.shape, channel_wise_attention_regions.shape)
-                out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
-
-            out = self.layer_dict['conv_{}'.format(i)](out, params=param_dict['conv_{}'.format(i)], training=training,
-                                                       backup_running_statistics=backup_running_statistics,
-                                                       num_step=num_step)
-
-            out = F.avg_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
-
-        if self.use_channel_wise_attention:
-            out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
-            out_channels = out_channels.view(out_channels.shape[0], -1)
-
-            channel_wise_attention_regions = self.layer_dict[
-                'channel_wise_attention_linear_pred_network_out'].forward(
-                out_channels, params=param_dict['channel_wise_attention_linear_pred_network_out'])
-
-            channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
-
-            out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
-
-        features = out
-        out = F.avg_pool2d(out, out.shape[-1])
-
-        out = out.view(out.size(0), -1)
-        out = self.layer_dict['linear'](out, param_dict['linear'])
-
-        if return_features:
-            return out, features
-        else:
-            return out
-
-    def restore_backup_stats(self):
-        """
-        Reset stored batch statistics from the stored backup.
-        """
-        for name, module in self.named_modules():
-            if type(module) == MetaBatchNormLayer:
-                module.restore_backup_stats()
-
-    def zero_grad(self, params=None):
-        if params is None:
-            for param in self.parameters():
-                if param.requires_grad == True:
-                    if param.grad is not None:
-                        if torch.sum(param.grad) > 0:
-                            print(param.grad)
-                            param.grad.zero_()
-        else:
-            for name, param in params.items():
-                if param.requires_grad == True:
-                    if param.grad is not None:
-                        if torch.sum(param.grad) > 0:
-                            print(param.grad)
-                            param.grad.zero_()
-                            params[name].grad = None
+# class VGGActivationNormNetworkWithAttention(nn.Module):
+#     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
+#                  num_stages, num_filters, num_support_set_steps, num_target_set_steps):
+#         """
+#         Builds a multilayer convolutional network. It also provides functionality for passing external parameters to be
+#         used at inference time. Enables inner loop optimization readily.
+#         :param im_shape: The input image batch shape.
+#         :param num_output_classes: The number of output classes of the network.
+#         :param args: A named tuple containing the system's hyperparameters.
+#         :param device: The device to run this on.
+#         :param meta_classifier: A flag indicating whether the system's meta-learning (inner-loop) functionalities should
+#         be enabled.
+#         """
+#         super(VGGActivationNormNetworkWithAttention, self).__init__()
+#
+#         self.total_layers = 0
+#         self.upscale_shapes = []
+#         self.num_filters = num_filters
+#         self.num_stages = num_stages
+#         self.input_shape = input_shape
+#         self.use_channel_wise_attention = use_channel_wise_attention
+#         self.num_output_classes = num_output_classes
+#         self.num_support_set_steps = num_support_set_steps
+#         self.num_target_set_steps = num_target_set_steps
+#         self.build_network()
+#
+#     def build_network(self):
+#         """
+#         Builds the network before inference is required by creating some dummy inputs with the same input as the
+#         self.im_shape tuple. Then passes that through the network and dynamically computes input shapes and
+#         sets output shapes for each layer.
+#         """
+#         x = torch.zeros(self.input_shape)
+#         out = x
+#         self.layer_dict = nn.ModuleDict()
+#
+#         for i in range(self.num_stages):
+#
+#             if self.use_channel_wise_attention:
+#                 out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
+#                 out_channels = out_channels.view(out_channels.shape[0], -1)
+#
+#                 self.layer_dict['channel_wise_attention_linear_pred_network_{}'.format(i)] = MetaLinearLayer(
+#                     input_shape=out_channels.shape, num_filters=out_channels.shape[-1], use_bias=True)
+#                 channel_wise_attention_regions = self.layer_dict[
+#                     'channel_wise_attention_linear_pred_network_{}'.format(i)].forward(
+#                     out_channels, params=None)
+#
+#                 channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
+#                 # print(out.shape, channel_wise_attention_regions.shape)
+#                 out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
+#             # print(i, out.shape)
+#             self.layer_dict['conv_{}'.format(i)] = MetaConvNormLayerLeakyReLU(input_shape=out.shape,
+#                                                                               num_filters=self.num_filters,
+#                                                                               kernel_size=3, stride=1,
+#                                                                               padding=1,
+#                                                                               use_bias=True,
+#                                                                               groups=1, per_step_bn_statistics=True,
+#                                                                               num_support_set_steps=self.num_support_set_steps,
+#                                                                               num_target_set_steps=self.num_target_set_steps)
+#
+#             out = self.layer_dict['conv_{}'.format(i)](out, training=True, num_step=0)
+#
+#             out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
+#
+#         if self.use_channel_wise_attention:
+#             out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
+#
+#             out_channels = out_channels.view(out_channels.shape[0], -1)
+#
+#             self.layer_dict['channel_wise_attention_linear_pred_network_out'] = MetaLinearLayer(
+#                 input_shape=out_channels.shape, num_filters=out_channels.shape[-1], use_bias=True)
+#
+#             channel_wise_attention_regions = self.layer_dict[
+#                 'channel_wise_attention_linear_pred_network_out'].forward(
+#                 out_channels, params=None)
+#
+#             channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
+#             out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
+#
+#         out = F.avg_pool2d(out, out.shape[-1])
+#         out = out.view((out.shape[0], -1))
+#
+#         self.layer_dict['linear'] = MetaLinearLayer(input_shape=(out.shape[0], np.prod(out.shape[1:])),
+#                                                     num_filters=self.num_output_classes, use_bias=True)
+#
+#         out = self.layer_dict['linear'](out)
+#         print("VGGNetwork build", out.shape)
+#
+#     def forward(self, x, num_step, dropout_training=None, params=None, training=False,
+#                 backup_running_statistics=False, return_features=False):
+#         """
+#         Forward propages through the network. If any params are passed then they are used instead of stored params.
+#         :param x: Input image batch.
+#         :param num_step: The current inner loop step number
+#         :param params: If params are None then internal parameters are used. If params are a dictionary with keys the
+#          same as the layer names then they will be used instead.
+#         :param training: Whether this is training (True) or eval time.
+#         :param backup_running_statistics: Whether to backup the running statistics in their backup store. Which is
+#         then used to reset the stats back to a previous state (usually after an eval loop, when we want to throw away stored statistics)
+#         :return: Logits of shape b, num_output_classes.
+#         """
+#         param_dict = dict()
+#
+#         if params is not None:
+#             params = {key: value for key, value in params.items()}
+#             # print([key for key, value in param_dict.items()])
+#             param_dict = extract_top_level_dict(current_dict=params)
+#
+#         for name, param in list(self.layer_dict.named_parameters()) + list(self.layer_dict.items()):
+#             path_bits = name.split(".")
+#             layer_name = path_bits[0]
+#             if layer_name not in param_dict:
+#                 param_dict[layer_name] = None
+#
+#         out = x
+#
+#         # print([key for key, value in param_dict.items() if value is not None])
+#
+#         for i in range(self.num_stages):
+#
+#             if self.use_channel_wise_attention:
+#                 out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
+#                 b, c = out_channels.shape[:2]
+#                 out_channels = out_channels.view(out_channels.shape[0], c)
+#                 # if param_dict['channel_wise_attention_linear_pred_network_{}'.format(i)] is not None:
+#                 # print(out_channels.shape, [(key, value.shape) for key, value in param_dict['channel_wise_attention_linear_pred_network_{}'.format(i)].items()])
+#                 channel_wise_attention_regions = self.layer_dict[
+#                     'channel_wise_attention_linear_pred_network_{}'.format(i)].forward(
+#                     out_channels, params=param_dict['channel_wise_attention_linear_pred_network_{}'.format(i)])
+#                 channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
+#                 # print(out.shape, channel_wise_attention_regions.shape)
+#                 out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
+#
+#             out = self.layer_dict['conv_{}'.format(i)](out, params=param_dict['conv_{}'.format(i)], training=training,
+#                                                        backup_running_statistics=backup_running_statistics,
+#                                                        num_step=num_step)
+#
+#             out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
+#
+#         if self.use_channel_wise_attention:
+#             out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
+#             out_channels = out_channels.view(out_channels.shape[0], -1)
+#
+#             channel_wise_attention_regions = self.layer_dict[
+#                 'channel_wise_attention_linear_pred_network_out'].forward(
+#                 out_channels, params=param_dict['channel_wise_attention_linear_pred_network_out'])
+#
+#             channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
+#
+#             out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
+#
+#         features = out
+#         out = F.avg_pool2d(out, out.shape[-1])
+#
+#         out = out.view(out.size(0), -1)
+#         out = self.layer_dict['linear'](out, param_dict['linear'])
+#
+#         if return_features:
+#             return out, features
+#         else:
+#             return out
+#
+#     def restore_backup_stats(self):
+#         """
+#         Reset stored batch statistics from the stored backup.
+#         """
+#         for name, module in self.named_modules():
+#             if type(module) == MetaBatchNormLayer:
+#                 module.restore_backup_stats()
+#
+#     def zero_grad(self, params=None):
+#         if params is None:
+#             for param in self.parameters():
+#                 if param.requires_grad == True:
+#                     if param.grad is not None:
+#                         if torch.sum(param.grad) > 0:
+#                             print(param.grad)
+#                             param.grad.zero_()
+#         else:
+#             for name, param in params.items():
+#                 if param.requires_grad == True:
+#                     if param.grad is not None:
+#                         if torch.sum(param.grad) > 0:
+#                             print(param.grad)
+#                             param.grad.zero_()
+#                             params[name].grad = None
 
 
 class FCCActivationNormNetwork(nn.Module):
@@ -1918,6 +1918,181 @@ class DenseNetActivationNormNetworkWithAttention(nn.Module):
                             param.grad.zero_()
                             params[name].grad = None
 
+class VGGActivationNormNetworkWithAttention(nn.Module):
+    def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
+                 num_stages, num_filters, num_support_set_steps, num_target_set_steps, num_blocks_per_stage):
+        """
+        Builds a multilayer convolutional network. It also provides functionality for passing external parameters to be
+        used at inference time. Enables inner loop optimization readily.
+        :param im_shape: The input image batch shape.
+        :param num_output_classes: The number of output classes of the network.
+        :param args: A named tuple containing the system's hyperparameters.
+        :param device: The device to run this on.
+        :param meta_classifier: A flag indicating whether the system's meta-learning (inner-loop) functionalities should
+        be enabled.
+        """
+        super(VGGActivationNormNetworkWithAttention, self).__init__()
+
+        self.total_layers = 0
+        self.upscale_shapes = []
+        self.num_filters = num_filters
+        self.num_stages = num_stages
+        self.input_shape = input_shape
+        self.use_channel_wise_attention = use_channel_wise_attention
+        self.num_output_classes = num_output_classes
+        self.num_blocks_per_stage = num_blocks_per_stage
+        self.num_support_set_steps = num_support_set_steps
+        self.num_target_set_steps = num_target_set_steps
+        self.build_network()
+
+    def build_network(self):
+        """
+        Builds the network before inference is required by creating some dummy inputs with the same input as the
+        self.im_shape tuple. Then passes that through the network and dynamically computes input shapes and
+        sets output shapes for each layer.
+        """
+        x = torch.zeros(self.input_shape)
+        out = x
+        self.layer_dict = nn.ModuleDict()
+
+        for i in range(self.num_stages):
+            for j in range(self.num_blocks_per_stage):
+
+                if self.use_channel_wise_attention:
+                    self.layer_dict['attention_layer_{}_{}'.format(i, j)] = SqueezeExciteLayer(input_shape=out.shape,
+                                                                                               num_filters=0,
+                                                                                               num_layers=0,
+                                                                                               num_support_set_steps=self.num_support_set_steps,
+                                                                                               num_target_set_steps=self.num_target_set_steps)
+                    out = self.layer_dict['attention_layer_{}_{}'.format(i, j)].forward(out)
+
+
+                self.layer_dict['conv_{}_{}'.format(i, j)] = MetaConvNormLayerLeakyReLU(input_shape=out.shape,
+                                                                                        num_filters=self.num_filters,
+                                                                                        kernel_size=3, stride=1,
+                                                                                        padding=1,
+                                                                                        use_bias=True,
+                                                                                        groups=1,
+                                                                                        per_step_bn_statistics=True,
+                                                                                        num_support_set_steps=self.num_support_set_steps,
+                                                                                        num_target_set_steps=self.num_target_set_steps)
+
+                out = self.layer_dict['conv_{}_{}'.format(i, j)](out, training=True, num_step=0)
+
+
+            out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
+
+
+        if self.use_channel_wise_attention:
+            self.layer_dict['attention_pre_logit_layer'] = SqueezeExciteLayer(input_shape=out.shape,
+                                                                              num_filters=0,
+                                                                              num_layers=0,
+                                                                              num_support_set_steps=self.num_support_set_steps,
+                                                                              num_target_set_steps=self.num_target_set_steps)
+            out = self.layer_dict['attention_pre_logit_layer'].forward(out)
+
+        features_avg = F.avg_pool2d(out, out.shape[-1]).squeeze()
+        # self.layer_dict['relational_pool'] = MetaBatchRelationalModule(input_shape=out.shape, use_coordinates=True,
+        #                                                                num_target_set_steps=self.num_target_set_steps,
+        #                                                                num_support_set_steps=self.num_support_set_steps,
+        #                                                                output_units=out.shape[1])
+        # out = self.layer_dict['relational_pool'].forward(out, num_step=0)
+        out = features_avg
+
+        self.layer_dict['linear'] = MetaLinearLayer(input_shape=out.shape,
+                                                    num_filters=self.num_output_classes, use_bias=True)
+
+        out = self.layer_dict['linear'](out)
+        print("VGGNetwork build", out.shape)
+
+    def forward(self, x, num_step, dropout_training=None, params=None, training=False,
+                backup_running_statistics=False, return_features=False):
+        """
+        Forward propages through the network. If any params are passed then they are used instead of stored params.
+        :param x: Input image batch.
+        :param num_step: The current inner loop step number
+        :param params: If params are None then internal parameters are used. If params are a dictionary with keys the
+         same as the layer names then they will be used instead.
+        :param training: Whether this is training (True) or eval time.
+        :param backup_running_statistics: Whether to backup the running statistics in their backup store. Which is
+        then used to reset the stats back to a previous state (usually after an eval loop, when we want to throw away stored statistics)
+        :return: Logits of shape b, num_output_classes.
+        """
+        param_dict = dict()
+
+        if params is not None:
+            params = {key: value for key, value in params.items()}
+            # print([key for key, value in param_dict.items()])
+            param_dict = extract_top_level_dict(current_dict=params)
+
+        for name, param in list(self.layer_dict.named_parameters()) + list(self.layer_dict.items()):
+            path_bits = name.split(".")
+            layer_name = path_bits[0]
+            if layer_name not in param_dict:
+                param_dict[layer_name] = None
+
+        out = x
+
+        # print([key for key, value in param_dict.items() if value is not None])
+
+        for i in range(self.num_stages):
+            for j in range(self.num_blocks_per_stage):
+
+                if self.use_channel_wise_attention:
+                    out = self.layer_dict['attention_layer_{}_{}'.format(i, j)].forward(out, num_step=num_step,
+                                                                                        params=param_dict[
+                                                                                            'attention_layer_{}_{}'.format(
+                                                                                                i, j)])
+
+                out = self.layer_dict['conv_{}_{}'.format(i, j)](out, training=True, num_step=num_step,
+                                                                 params=param_dict['conv_{}_{}'.format(i, j)])
+
+
+            out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
+
+        if self.use_channel_wise_attention:
+            out = self.layer_dict['attention_pre_logit_layer'].forward(out, params=param_dict[
+                'attention_pre_logit_layer'])
+        features = out
+        features_avg = F.avg_pool2d(out, out.shape[-1]).squeeze()
+
+        # out = F.avg_pool2d(out, out.shape[-1])
+
+        # out = self.layer_dict['relational_pool'].forward(out, params=param_dict['relational_pool'], num_step=num_step)
+
+        out = features_avg
+
+        out = self.layer_dict['linear'](out, param_dict['linear'])
+
+        if return_features:
+            return out, features
+        else:
+            return out
+
+    def restore_backup_stats(self):
+        """
+        Reset stored batch statistics from the stored backup.
+        """
+        for name, module in self.named_modules():
+            if type(module) == MetaBatchNormLayer:
+                module.restore_backup_stats()
+
+    def zero_grad(self, params=None):
+        if params is None:
+            for param in self.parameters():
+                if param.requires_grad == True:
+                    if param.grad is not None:
+                        if torch.sum(param.grad) > 0:
+                            print(param.grad)
+                            param.grad.zero_()
+        else:
+            for name, param in params.items():
+                if param.requires_grad == True:
+                    if param.grad is not None:
+                        if torch.sum(param.grad) > 0:
+                            print(param.grad)
+                            param.grad.zero_()
+                            params[name].grad = None
 
 class ResNetActivationNormNetworkWithAttention(nn.Module):
     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,

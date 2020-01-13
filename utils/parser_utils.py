@@ -6,24 +6,20 @@ import json
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description='Welcome to the DAGAN training and inference system')
+    parser = argparse.ArgumentParser(description='Welcome to the meta-learning training and inference system')
 
     parser.add_argument('--batch_size', nargs="?", type=int, default=32, help='Batch_size for experiment')
     parser.add_argument('--image_height', nargs="?", type=int, default=28)
     parser.add_argument('--image_width', nargs="?", type=int, default=28)
     parser.add_argument('--image_channels', nargs="?", type=int, default=1)
     parser.add_argument('--reset_stored_filepaths', type=str, default="False")
-    parser.add_argument('--reverse_channels', type=str, default="False")
-    parser.add_argument('--num_of_gpus', type=int, default=1)
     parser.add_argument('--indexes_of_folders_indicating_class', nargs='+', default=[-2, -3])
     parser.add_argument('--train_val_test_split', nargs='+', default=[0.73982737361, 0.26, 0.13008631319])
-    parser.add_argument('--samples_per_iter', nargs="?", type=int, default=1)
     parser.add_argument('--labels_as_int', type=str, default="False")
-    parser.add_argument('--seed', type=int, default=104)
+    parser.add_argument('--seed', type=int, default=100)
 
     parser.add_argument('--gpu_to_use', type=str)
     parser.add_argument('--num_dataprovider_workers', nargs="?", type=int, default=4)
-    parser.add_argument('--max_models_to_save', nargs="?", type=int, default=5)
     parser.add_argument('--dataset_name', type=str, default="omniglot_dataset")
     parser.add_argument('--dataset_path', type=str, default="datasets/omniglot_dataset")
     parser.add_argument('--reset_stored_paths', type=str, default="False")
@@ -35,16 +31,15 @@ def get_args():
 
     parser.add_argument('--total_epochs', type=int, default=200, help='Number of epochs per experiment')
     parser.add_argument('--total_iter_per_epoch', type=int, default=500, help='Number of iters per epoch')
-    parser.add_argument('--min_learning_rate', type=float, default=0.00001, help='Min learning rate')
+    parser.add_argument('--min_meta_learning_rate', type=float, default=0.00001, help='Min learning rate')
     parser.add_argument('--meta_learning_rate', type=float, default=0.001, help='Learning rate of overall MAML system')
 
     parser.add_argument('--norm_layer', type=str, default="batch_norm")
     parser.add_argument('--max_pooling', type=str, default="False")
     parser.add_argument('--per_step_bn_statistics', type=str, default="False")
     parser.add_argument('--num_classes_per_set', type=int, default=20, help='Number of classes to sample per set')
-    parser.add_argument('--number_of_training_steps_per_iter', type=int, default=1, help='Number of classes to sample per set')
-    parser.add_argument('--number_of_evaluation_steps_per_iter', type=int, default=1, help='Number of classes to sample per set')
-    parser.add_argument('--num_samples_per_class', type=int, default=1, help='Number of samples per set to sample')
+    parser.add_argument('--num_samples_per_support_class', type=int, default=1, help='Number of classes to sample per set')
+    parser.add_argument('--num_samples_per_target_class', type=int, default=1, help='Number of classes to sample per set')
     parser.add_argument('--name_of_args_json_file', type=str, default="None")
 
     args = parser.parse_args()
@@ -65,8 +60,6 @@ def get_args():
         # print(key, args_dict[key], type(args_dict[key]))
 
     args = Bunch(args_dict)
-
-    print(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count())
 
     args.use_cuda = torch.cuda.is_available()
     if torch.cuda.is_available():  # checks whether a cuda gpu is available and whether the gpu flag is True

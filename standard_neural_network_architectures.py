@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -209,18 +211,12 @@ class SqueezeExciteDenseNet(nn.Module):
         for i in range(self.num_stages):
             for j in range(self.num_blocks_per_stage):
                 if self.use_channel_wise_attention:
-                    attention_network_out = F.adaptive_avg_pool2d(out, 5).squeeze()
-
-                    out_channels = attention_network_out.view(attention_network_out.shape[0], -1)
-
-                    # self.layer_dict['channel_wise_attention_prediction_units_{}_{}'.format(j, i)] = BatchRelationalModule(
-                    #     input_shape=attention_network_out.shape, use_coordinates=True)
-                    # attention_network_out = self.layer_dict[
-                    #     'channel_wise_attention_prediction_units_{}_{}'.format(j, i)].forward(attention_network_out)
+                    attention_network_out = F.avg_pool2d(out, out.shape[-1]).squeeze()
 
                     self.layer_dict['channel_wise_attention_output_fcc_{}_{}'.format(j, i)] = nn.Linear(
-                        in_features=out_channels.shape[1], out_features=out.shape[1], bias=True)
-                    channel_wise_attention_regions = self.layer_dict['channel_wise_attention_output_fcc_{}_{}'.format(j, i)].forward(out_channels)
+                        in_features=attention_network_out.shape[1], out_features=out.shape[1], bias=True)
+                    channel_wise_attention_regions = self.layer_dict[
+                        'channel_wise_attention_output_fcc_{}_{}'.format(j, i)].forward(attention_network_out)
 
                     channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
                     out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
@@ -274,21 +270,13 @@ class SqueezeExciteDenseNet(nn.Module):
             for j in range(self.num_blocks_per_stage):
                 # out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
                 if self.use_channel_wise_attention:
-
-                    out_channels = F.adaptive_avg_pool2d(out, 5).squeeze()
-
-                    out_channels = out_channels.view(out_channels.shape[0], -1)
-
-                    # out_channels = self.layer_dict[
-                    #     'channel_wise_attention_prediction_units_{}_{}'.format(j, i)].forward(
-                    #     out_channels)
+                    out_channels = F.avg_pool2d(out, out.shape[-1]).squeeze()
 
                     channel_wise_attention_regions = self.layer_dict[
                         'channel_wise_attention_output_fcc_{}_{}'.format(j, i)].forward(out_channels)
 
                     channel_wise_attention_regions = F.sigmoid(channel_wise_attention_regions)
                     out = out * channel_wise_attention_regions.unsqueeze(2).unsqueeze(2)
-
 
                 cur = self.layer_dict['conv_bottleneck_{}_{}'.format(i, j)](out)
                 cur = self.layer_dict['conv_{}_{}'.format(i, j)](cur)
@@ -519,8 +507,8 @@ class CriticNetwork(nn.Module):
                  support_set_classifier_pre_last_features,
                  target_set_classifier_pre_last_features,
                  support_set_label_shape,
-                 num_classes_per_set, num_samples_per_class,
-                 num_target_samples, args):
+                 num_classes_per_set, num_support_samples,
+                 num_target_samples, conditional_information):
         """
         Builds a multilayer convolutional network. It also provides functionality for passing external parameters to be
         used at inference time. Enables inner loop optimization readily.
@@ -535,11 +523,11 @@ class CriticNetwork(nn.Module):
 
         self.layer_dict = nn.ModuleDict()
         self.num_target_samples = num_target_samples
-        self.num_samples_per_class = num_samples_per_class
+        self.num_samples_per_class = num_support_samples
         self.num_classes_per_set = num_classes_per_set
         self.logit_shape = logit_shape
         self.task_embedding_shape = task_embedding_shape
-        self.conditional_information = args.conditional_information
+        self.conditional_information = conditional_information
         self.support_set_feature_shape = support_set_feature_shape
         self.target_set_feature_shape = target_set_feature_shape
         self.support_set_classifier_pre_last_features = support_set_classifier_pre_last_features
@@ -584,18 +572,6 @@ class CriticNetwork(nn.Module):
         mixed_features = torch.cat(processed_feature_list, dim=2)
 
         feature_sets = [mixed_features]
-        # print(feature_sets.shape)
-        for i in range(5):
-            dilation = 2 ** i
-            cur = torch.cat(feature_sets, dim=1)
-            self.layer_dict['dilated_conv1d_{}'.format(i)] = nn.Conv1d(in_channels=cur.shape[1],
-                                                                       out_channels=8, kernel_size=3,
-                                                                       dilation=dilation, padding=dilation)
-            cur = self.layer_dict['dilated_conv1d_{}'.format(i)](cur)
-            self.layer_dict['norm_layer_{}'.format(i)] = nn.BatchNorm1d(num_features=cur.shape[1])
-            cur = self.layer_dict['norm_layer_{}'.format(i)](cur)
-            cur = F.relu(cur)
-            feature_sets.append(cur)
 
         out = torch.cat(feature_sets, dim=1)
 
@@ -605,13 +581,13 @@ class CriticNetwork(nn.Module):
                                                 out_features=16, bias=False)
 
         out = self.layer_dict['linear_0'](out)
-        out = F.relu(out)
+        out = F.leaky_relu(out)
 
         self.layer_dict['linear_1'] = nn.Linear(in_features=out.shape[1],
                                                 out_features=16, bias=False)
 
         out = self.layer_dict['linear_1'](out)
-        out = F.relu(out)
+        out = F.leaky_relu(out)
 
         self.layer_dict['linear_preds'] = nn.Linear(in_features=out.shape[1],
                                                     out_features=1, bias=False)
@@ -621,8 +597,7 @@ class CriticNetwork(nn.Module):
         out = out.sum()
         print("VGGNetwork build", out.shape)
 
-    def forward(self, support_set_features, target_set_features, logits, support_set_classifier_pre_last_layer,
-                target_set_classifier_pre_last_layer, support_set_labels, task_embedding, return_sum=True):
+    def forward(self, logits, task_embedding, return_sum=True):
         """
         Forward propages through the network. If any params are passed then they are used instead of stored params.
         :param x: Input image batch.
@@ -665,25 +640,16 @@ class CriticNetwork(nn.Module):
         mixed_features = torch.cat(processed_feature_list, dim=2)
 
         feature_sets = [mixed_features]
-        for i in range(5):
-            dilation = 2 ** i
-            cur = torch.cat(feature_sets, dim=1)
-
-            cur = self.layer_dict['dilated_conv1d_{}'.format(i)](cur)
-
-            cur = self.layer_dict['norm_layer_{}'.format(i)](cur)
-            cur = F.relu(cur)
-            feature_sets.append(cur)
 
         out = torch.cat(feature_sets, dim=1)
 
         out = out.view(out.shape[0], -1)
 
         out = self.layer_dict['linear_0'](out)
-        out = F.relu(out)
+        out = F.leaky_relu(out)
 
         out = self.layer_dict['linear_1'](out)
-        out = F.relu(out)
+        out = F.leaky_relu(out)
 
         out = self.layer_dict['linear_preds'](out)
 
@@ -694,12 +660,12 @@ class CriticNetwork(nn.Module):
 
 
 class TaskRelationalEmbedding(nn.Module):
-    def __init__(self, input_shape, num_samples_per_class, num_classes_per_set):
+    def __init__(self, input_shape, num_samples_per_support_class, num_classes_per_set):
         super(TaskRelationalEmbedding, self).__init__()
 
         self.input_shape = input_shape
         self.block_dict = nn.ModuleDict()
-        self.num_samples_per_class = num_samples_per_class
+        self.num_samples_per_class = num_samples_per_support_class
         self.num_classes_per_set = num_classes_per_set
         self.first_time = True
         self.build_block()
@@ -865,13 +831,15 @@ class RelationalModule(nn.Module):
 
 
 class BatchRelationalModule(nn.Module):
-    def __init__(self, input_shape, use_coordinates=True):
+    def __init__(self, input_shape, use_coordinates=True, num_layers=2, num_units=64):
         super(BatchRelationalModule, self).__init__()
 
         self.input_shape = input_shape
         self.block_dict = nn.ModuleDict()
         self.first_time = True
         self.use_coordinates = use_coordinates
+        self.num_layers = num_layers
+        self.num_units = num_units
         self.build_block()
 
     def build_block(self):
@@ -910,8 +878,8 @@ class BatchRelationalModule(nn.Module):
             per_location_feature.shape[0] * per_location_feature.shape[1] * per_location_feature.shape[2],
             per_location_feature.shape[3])
         print(out.shape)
-        for idx_layer in range(2):
-            self.block_dict['g_fcc_{}'.format(idx_layer)] = nn.Linear(out.shape[1], out_features=64, bias=True)
+        for idx_layer in range(self.num_layers):
+            self.block_dict['g_fcc_{}'.format(idx_layer)] = nn.Linear(out.shape[1], out_features=self.num_units, bias=True)
             out = self.block_dict['g_fcc_{}'.format(idx_layer)].forward(out)
             self.block_dict['LeakyReLU_{}'.format(idx_layer)] = nn.LeakyReLU()
             out = self.block_dict['LeakyReLU_{}'.format(idx_layer)].forward(out)
@@ -922,11 +890,11 @@ class BatchRelationalModule(nn.Module):
         out = out.sum(1).sum(1)
         print('here', out.shape)
         """f"""
-        self.post_processing_layer = nn.Linear(in_features=out.shape[1], out_features=64)
+        self.post_processing_layer = nn.Linear(in_features=out.shape[1], out_features=self.num_units)
         out = self.post_processing_layer.forward(out)
         self.block_dict['LeakyReLU_post_processing'] = nn.LeakyReLU()
         out = self.block_dict['LeakyReLU_post_processing'].forward(out)
-        self.output_layer = nn.Linear(in_features=out.shape[1], out_features=64)
+        self.output_layer = nn.Linear(in_features=out.shape[1], out_features=self.num_units)
         out = self.output_layer.forward(out)
         self.block_dict['LeakyReLU_output'] = nn.LeakyReLU()
         out = self.block_dict['LeakyReLU_output'].forward(out)
@@ -1028,7 +996,8 @@ class DenseEmbeddingSmallNetwork(nn.Module):
 
 class SqueezeExciteDenseNetEmbeddingSmallNetwork(nn.Module):
     def __init__(self, im_shape, num_filters, num_blocks_per_stage, num_stages, dropout_rate,
-                 output_spatial_dimensionality, use_channel_wise_attention, average_pool_outputs=True, use_vgg_features=False,
+                 output_spatial_dimensionality, use_channel_wise_attention, average_pool_outputs=True,
+                 use_vgg_features=False,
                  conv_type=Conv2dNormLeakyReLU):
         super(SqueezeExciteDenseNetEmbeddingSmallNetwork, self).__init__()
         b, c, self.h, self.w = im_shape
@@ -1056,7 +1025,8 @@ class SqueezeExciteDenseNetEmbeddingSmallNetwork(nn.Module):
                                                                       dropout_rate=self.dropout_rate,
                                                                       reduction_rate=1.0,
                                                                       average_pool_output=self.average_pool_outputs,
-                                                                      output_spatial_dim=self.output_spatial_dimensionality, use_channel_wise_attention=self.use_channel_wise_attention)
+                                                                      output_spatial_dim=self.output_spatial_dimensionality,
+                                                                      use_channel_wise_attention=self.use_channel_wise_attention)
         out = self.layer_dict['dense_net_features'].forward(out, dropout_training=False)
 
         print("DenseEmbeddingSmallNetwork output shape", out.shape)
@@ -1376,6 +1346,144 @@ class ComparatorNetwork(nn.Module):
 
         return out
 
-# x = torch.zeros((32, 3, 5, 5))
-#
-# module = ComparatorNetwork(support_set_shape=x.shape, target_set_shape=x.shape, num_layers=2, num_features=32)
+
+class ConvReLUBatchNorm(nn.Module):
+    def __init__(self, input_shape, num_filters, kernel_size, stride, padding, bias, batch_norm=True):
+        super(ConvReLUBatchNorm, self).__init__()
+        self.input_shape = input_shape
+        self.batch_norm = batch_norm
+        self.num_filters = num_filters
+        self.padding = padding
+        self.bias = bias
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.layer_dict = nn.ModuleDict()
+        self.build_block()
+
+    def build_block(self):
+        x = torch.zeros(self.input_shape)
+        out = x
+        self.layer_dict['conv'] = nn.Conv2d(in_channels=out.shape[1], out_channels=self.num_filters,
+                                            kernel_size=self.kernel_size, stride=self.stride,
+                                            padding=self.padding, bias=self.bias)
+        out = self.layer_dict['conv'].forward(out)
+
+        out = F.leaky_relu(out)
+
+        if self.batch_norm:
+            self.layer_dict['bn'] = nn.BatchNorm2d(out.shape[1], track_running_stats=True)
+            out = self.layer_dict['bn'].forward(out)
+        print("ConvBatchNormReLU output volume", out.shape)
+
+    def forward(self, x):
+        out = x
+        out = self.layer_dict['conv'].forward(out)
+
+        out = F.leaky_relu(out)
+
+        if self.batch_norm:
+            out = self.layer_dict['bn'].forward(out)
+        return out
+
+
+class VGGEmbeddingNetwork(nn.Module):
+    def __init__(self, im_shape):
+        super(VGGEmbeddingNetwork, self).__init__()
+        b, c, self.h, self.w = im_shape
+        self.total_layers = 0
+        self.layers = OrderedDict()
+        self.input_shape = list(im_shape)
+        self.layer_dict = nn.ModuleDict()
+        self.build_block()
+
+    def build_block(self):
+        x = torch.ones(self.input_shape)
+        out = x
+        for i in range(4):
+            self.layer_dict['conv_relu_bn_{}'.format(i)] = ConvReLUBatchNorm(input_shape=out.shape, num_filters=64,
+                                                                             stride=1, padding=1, bias=False,
+                                                                             batch_norm=True, kernel_size=3)
+            out = self.layer_dict['conv_relu_bn_{}'.format(i)](out)
+            out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
+
+        print(out.shape)
+
+    def forward(self, x):
+        out = x
+        for i in range(4):
+            out = self.layer_dict['conv_relu_bn_{}'.format(i)](out)
+            out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
+
+        # print(out.shape)
+        features = out
+        out = out.view(out.size(0), -1)
+        return out, features
+
+    def reinitialize(self):
+        for name, module in self.named_modules():
+            if type(module) == nn.Conv2d or type(module) == nn.BatchNorm2d:
+                module.reset_parameters()
+
+class DataConditionalLearningScheduler(nn.Module):
+    def __init__(self, input_shape, num_layers, num_units, num_output_units, use_step_idx=False):
+        self.input_shape = input_shape
+        self.use_step_idx = use_step_idx
+        self.num_layers = num_layers
+        self.num_units = num_units
+        self.num_output_units = num_output_units
+        self.build_block()
+
+    def build_block(self):
+
+        x = torch.zeros(self.input_shape)
+        self.layer_dict = nn.ModuleDict()
+        out = x
+        #b, c, h, w
+
+        self.layer_dict['feature_level_relational_network'] = BatchRelationalModule(input_shape=out.shape, use_coordinates=True)
+
+        out = self.layer_dict['feature_level_relational_network'].forward(out)
+        #b, f
+
+        out = out.unsqueeze(0).permute([0, 2, 1])
+
+        #1, f, b
+
+        self.layer_dict['item_level_relational_network'] = BatchRelationalModule(input_shape=out.shape)
+
+        out = self.layer_dict['item_level_relational_network'].forward(out)
+
+        if self.use_step_idx:
+            out = torch.cat([out, torch.ones(out.shape[0], 1)], dim=1)
+
+        for i in range(3):
+            self.layer_dict['fcc_processing_{}'.format(i)] = nn.Linear(out.shape[1], out_features=64, bias=True)
+            out = F.leaky_relu(self.layer_dict['fcc_processing_{}'.format(i)].forward(out))
+
+        self.output_stage = nn.Linear(in_features=out.shape[1], out_features=self.num_output_units, bias=True)
+
+        out = self.output_stage.forward(out)
+
+        print('Finished building', self.__class__.__name__, 'output shape', out.shape)
+
+    def forward(self, x, step_idx=None):
+        out = x
+        # b, c, h, w
+        out = self.layer_dict['feature_level_relational_network'].forward(out)
+        # b, f
+        out = out.unsqueeze(0).permute([0, 2, 1])
+        # 1, f, b
+        out = self.layer_dict['item_level_relational_network'].forward(out)
+
+        if self.use_step_idx:
+            out = torch.cat([out, torch.ones(out.shape[0], 1) * step_idx], dim=1)
+
+        for i in range(3):
+            out = F.leaky_relu(self.layer_dict['fcc_processing_{}'.format(i)].forward(out))
+
+        out = self.output_stage.forward(out)
+
+        return out
+
+
+

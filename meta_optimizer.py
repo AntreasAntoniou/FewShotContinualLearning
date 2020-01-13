@@ -61,7 +61,7 @@ class LSLRGradientDescentLearningRule(nn.Module):
     will correspond to a stochastic gradient descent learning rule.
     """
 
-    def __init__(self, device, total_num_inner_loop_steps, learnable_learning_rates, init_learning_rate=1e-3):
+    def __init__(self, total_num_inner_loop_steps, learnable_learning_rates, init_learning_rate=1e-3):
         """Creates a new learning rule object.
         Args:
             init_learning_rate: A postive scalar to scale gradient updates to the
@@ -72,7 +72,7 @@ class LSLRGradientDescentLearningRule(nn.Module):
         super(LSLRGradientDescentLearningRule, self).__init__()
         assert init_learning_rate > 0., 'learning_rate should be positive.'
         self.init_learning_rate = torch.ones(1) * init_learning_rate
-        self.init_learning_rate.to(device)
+        self.init_learning_rate.to(torch.cuda.current_device())
         self.total_num_inner_loop_steps = total_num_inner_loop_steps
         self.learnable_learning_rates = learnable_learning_rates
 

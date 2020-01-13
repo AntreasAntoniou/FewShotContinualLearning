@@ -1,19 +1,19 @@
 import os
-from collections import OrderedDict
-
-import os
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
+from torch.optim import AdamW
 
-from meta_neural_network_architectures import DenseNetActivationNormNetworkWithAttention, VGGActivationNormNetwork
+from meta_neural_network_architectures import VGGActivationNormNetwork, \
+    VGGActivationNormNetworkWithAttention
 from meta_optimizer import LSLRGradientDescentLearningRule
+from pytorch_utils import int_to_one_hot
 from standard_neural_network_architectures import TaskRelationalEmbedding, \
-    SqueezeExciteDenseNetEmbeddingSmallNetwork, CriticNetwork
+    SqueezeExciteDenseNetEmbeddingSmallNetwork, CriticNetwork, VGGEmbeddingNetwork
 
 
 def set_torch_seed(seed):
@@ -30,7 +30,11 @@ def set_torch_seed(seed):
 
 
 class MAMLFewShotClassifier(nn.Module):
-    def __init__(self, im_shape, device, args):
+    def __init__(self, batch_size, seed, num_classes_per_set, num_samples_per_support_class,
+                 num_samples_per_target_class, image_channels,
+                 num_filters, num_blocks_per_stage, num_stages, dropout_rate, output_spatial_dimensionality,
+                 image_height, image_width, num_support_set_steps, init_learning_rate, num_target_set_steps,
+                 conditional_information, min_learning_rate, total_epochs, weight_decay, meta_learning_rate, **kwargs):
         """
         Initializes a MAML few shot learning system
         :param im_shape: The images input size, in batch, c, h, w shape
@@ -38,31 +42,51 @@ class MAMLFewShotClassifier(nn.Module):
         :param args: A namedtuple of arguments specifying various hyperparameters.
         """
         super(MAMLFewShotClassifier, self).__init__()
-        self.args = args
-        self.args.device = device
-        self.device = device
-        self.batch_size = args.batch_size
-        self.use_cuda = args.use_cuda
-        self.im_shape = im_shape
+        self.batch_size = batch_size
         self.current_epoch = -1
+        self.rng = set_torch_seed(seed=seed)
+        self.num_classes_per_set = num_classes_per_set
+        self.num_samples_per_support_class = num_samples_per_support_class
+        self.num_samples_per_target_class = num_samples_per_target_class
+        self.image_channels = image_channels
+        self.num_filters = num_filters
+        self.num_blocks_per_stage = num_blocks_per_stage
+        self.num_stages = num_stages
+        self.dropout_rate = dropout_rate
+        self.output_spatial_dimensionality = output_spatial_dimensionality
+        self.image_height = image_height
+        self.image_width = image_width
+        self.num_support_set_steps = num_support_set_steps
+        self.init_learning_rate = init_learning_rate
+        self.num_target_set_steps = num_target_set_steps
+        self.conditional_information = conditional_information
+        self.min_learning_rate = min_learning_rate
+        self.total_epochs = total_epochs
+        self.weight_decay = weight_decay
+        self.meta_learning_rate = meta_learning_rate
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
         self.clip_grads = True
-        self.rng = set_torch_seed(seed=args.train_seed)
+        self.rng = set_torch_seed(seed=seed)
         self.build_module()
 
     def build_module(self):
         return NotImplementedError
 
-    def setup_optimizer(self, args):
+    def setup_optimizer(self):
 
-        exclude_param_string = None if "none" in self.args.exclude_param_string else self.args.exclude_param_string
+        exclude_param_string = None if "none" in self.exclude_param_string else self.exclude_param_string
         self.optimizer = optim.Adam(self.trainable_parameters(exclude_params_with_string=exclude_param_string),
-                                    lr=args.meta_learning_rate,
-                                    weight_decay=args.weight_decay, amsgrad=False)
+                                    lr=0.001,
+                                    weight_decay=self.weight_decay, amsgrad=False)
 
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=self.optimizer,
-                                                              T_max=self.args.total_epochs,
-                                                              eta_min=self.args.min_learning_rate)
-        self.to(self.device)
+                                                              T_max=self.total_epochs,
+                                                              eta_min=0.001)
+        print('min learning rate'.self.min_learning_rate)
+        self.to(torch.cuda.current_device())
 
         print("Outer Loop parameters")
         for name, param in self.trainable_names_parameters(exclude_params_with_string=exclude_param_string):
@@ -83,19 +107,19 @@ class MAMLFewShotClassifier(nn.Module):
         :return: A tensor to be used to compute the weighted average of the loss, useful for
         the MSL (Multi Step Loss) mechanism.
         """
-        loss_weights = np.ones(shape=(self.args.number_of_training_steps_per_iter)) * (
-                1.0 / self.args.number_of_training_steps_per_iter)
-        decay_rate = 1.0 / self.args.number_of_training_steps_per_iter / self.args.multi_step_loss_num_epochs
-        min_value_for_non_final_losses = self.args.minimum_per_task_contribution / self.args.number_of_training_steps_per_iter
+        loss_weights = np.ones(shape=(self.number_of_training_steps_per_iter)) * (
+                1.0 / self.number_of_training_steps_per_iter)
+        decay_rate = 1.0 / self.number_of_training_steps_per_iter / self.multi_step_loss_num_epochs
+        min_value_for_non_final_losses = self.minimum_per_task_contribution / self.number_of_training_steps_per_iter
         for i in range(len(loss_weights) - 1):
             curr_value = np.maximum(loss_weights[i] - (self.current_epoch * decay_rate), min_value_for_non_final_losses)
             loss_weights[i] = curr_value
 
         curr_value = np.minimum(
-            loss_weights[-1] + (self.current_epoch * (self.args.number_of_training_steps_per_iter - 1) * decay_rate),
-            1.0 - ((self.args.number_of_training_steps_per_iter - 1) * min_value_for_non_final_losses))
+            loss_weights[-1] + (self.current_epoch * (self.number_of_training_steps_per_iter - 1) * decay_rate),
+            1.0 - ((self.number_of_training_steps_per_iter - 1) * min_value_for_non_final_losses))
         loss_weights[-1] = curr_value
-        loss_weights = torch.Tensor(loss_weights).to(device=self.device)
+        loss_weights = torch.Tensor(loss_weights).to(device=torch.cuda.current_device())
         return loss_weights
 
     def apply_inner_loop_update(self, loss, names_weights_copy, use_second_order, current_step_idx):
@@ -137,11 +161,11 @@ class MAMLFewShotClassifier(nn.Module):
         for name, param in params:
             if param.requires_grad:
                 if all([item not in name for item in exclude_strings]):
-                    if self.args.enable_inner_loop_optimizable_bn_params:
-                        param_dict[name] = param.to(device=self.device)
+                    if self.enable_inner_loop_optimizable_bn_params:
+                        param_dict[name] = param.to(device=torch.cuda.current_device())
                     else:
                         if "norm_layer" not in name and 'bn' not in name and 'prelu' not in name:
-                            param_dict[name] = param.to(device=self.device)
+                            param_dict[name] = param.to(device=torch.cuda.current_device())
         return param_dict
 
     def net_forward(self, x, y, weights, backup_running_statistics, training, num_step,
@@ -216,19 +240,11 @@ class MAMLFewShotClassifier(nn.Module):
         :param epoch: The index of the currrent epoch.
         :return: A dictionary of losses for the current step.
         """
-        if self.args.train_in_stages == True and epoch > self.args.train_learning_rates_as_a_stage_num_epochs:
-            self.optimizer = optim.Adam(self.trainable_parameters(), lr=self.args.meta_learning_rate,
-                                        weight_decay=self.args.weight_decay, amsgrad=False)
-
-            self.scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=self.optimizer,
-                                                                  T_max=self.args.total_epochs,
-                                                                  eta_min=self.args.min_learning_rate)
-
         losses, per_task_preds = self.forward(data_batch=data_batch, epoch=epoch,
-                                              use_second_order=self.args.second_order and
-                                                               epoch > self.args.first_order_to_second_order_epoch,
-                                              use_multi_step_loss_optimization=self.args.use_multi_step_loss_optimization,
-                                              num_steps=self.args.number_of_training_steps_per_iter,
+                                              use_second_order=self.second_order and
+                                                               epoch > self.first_order_to_second_order_epoch,
+                                              use_multi_step_loss_optimization=self.use_multi_step_loss_optimization,
+                                              num_steps=self.number_of_training_steps_per_iter,
                                               training_phase=True)
         return losses, per_task_preds
 
@@ -240,8 +256,8 @@ class MAMLFewShotClassifier(nn.Module):
         :return: A dictionary of losses for the current step.
         """
         losses, per_task_preds = self.forward(data_batch=data_batch, epoch=epoch, use_second_order=False,
-                                              use_multi_step_loss_optimization=self.args.use_multi_step_loss_optimization,
-                                              num_steps=self.args.number_of_evaluation_steps_per_iter,
+                                              use_multi_step_loss_optimization=self.use_multi_step_loss_optimization,
+                                              num_steps=self.number_of_evaluation_steps_per_iter,
                                               training_phase=False)
 
         return losses, per_task_preds
@@ -253,7 +269,7 @@ class MAMLFewShotClassifier(nn.Module):
         """
         self.optimizer.zero_grad()
         loss.backward(retain_graph=retain_graph)
-        if 'imagenet' in self.args.dataset_name:
+        if 'imagenet' in self.dataset_name:
             for name, param in self.trainable_names_parameters(exclude_params_with_string=exclude_string_list):
                 #
 
@@ -272,23 +288,26 @@ class MAMLFewShotClassifier(nn.Module):
 
 
 class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
-    def __init__(self, im_shape, device, args):
+    def __init__(self, batch_size, seed, num_classes_per_set, num_samples_per_support_class,
+                 num_samples_per_target_class, image_channels,
+                 num_filters, num_blocks_per_stage, num_stages, dropout_rate, output_spatial_dimensionality,
+                 image_height, image_width, num_support_set_steps, init_learning_rate, num_target_set_steps,
+                 conditional_information, min_learning_rate, total_epochs, weight_decay, meta_learning_rate, **kwargs):
         """
         Initializes a MAML few shot learning system
         :param im_shape: The images input size, in batch, c, h, w shape
         :param device: The device to use to use the model on.
         :param args: A namedtuple of arguments specifying various hyperparameters.
         """
-        super(EmbeddingMAMLFewShotClassifier, self).__init__(im_shape=im_shape, device=device, args=args)
-
-        self.args = args
-        self.args.device = device
-        self.device = device
-        self.batch_size = args.batch_size
-        self.use_cuda = args.use_cuda
-        self.im_shape = im_shape
-        self.current_epoch = -1
-        self.rng = set_torch_seed(seed=args.train_seed)
+        super(EmbeddingMAMLFewShotClassifier, self).__init__(batch_size, seed, num_classes_per_set,
+                                                             num_samples_per_support_class,
+                                                             num_samples_per_target_class, image_channels,
+                                                             num_filters, num_blocks_per_stage, num_stages,
+                                                             dropout_rate, output_spatial_dimensionality,
+                                                             image_height, image_width, num_support_set_steps,
+                                                             init_learning_rate, num_target_set_steps,
+                                                             conditional_information, min_learning_rate, total_epochs,
+                                                             weight_decay, meta_learning_rate, **kwargs)
 
     def param_dict_to_vector(self, param_dict):
 
@@ -313,14 +332,14 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
     def build_module(self):
         support_set_shape = (
-            self.args.num_classes_per_set * self.args.num_samples_per_class,
-            self.args.image_channels,
-            self.args.image_height, self.args.image_width)
+            self.num_classes_per_set * self.num_samples_per_support_class,
+            self.image_channels,
+            self.image_height, self.image_width)
 
         target_set_shape = (
-            self.args.num_classes_per_set * self.args.num_target_samples,
-            self.args.image_channels,
-            self.args.image_height, self.args.image_width)
+            self.num_classes_per_set * self.num_samples_per_target_class,
+            self.image_channels,
+            self.image_height, self.image_width)
 
         x_support_set = torch.ones(support_set_shape)
         x_target_set = torch.ones(target_set_shape)
@@ -334,15 +353,10 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         num_support_samples = x_support_set.shape[0]
 
         self.dense_net_embedding = SqueezeExciteDenseNetEmbeddingSmallNetwork(
-            im_shape=torch.cat([x_support_set, x_target_set], dim=0).shape, num_filters=self.args.num_filters,
-            num_blocks_per_stage=self.args.num_blocks_per_stage,
-            num_stages=self.args.num_stages, average_pool_outputs=False, dropout_rate=self.args.dropout_rate,
-            output_spatial_dimensionality=self.args.output_spatial_dimensionality, use_channel_wise_attention=True)
-
-        if type(self.device) is list:
-            init_device = self.device[0]
-        else:
-            init_device = self.device
+            im_shape=torch.cat([x_support_set, x_target_set], dim=0).shape, num_filters=self.num_filters,
+            num_blocks_per_stage=self.num_blocks_per_stage,
+            num_stages=self.num_stages, average_pool_outputs=False, dropout_rate=self.dropout_rate,
+            output_spatial_dimensionality=self.output_spatial_dimensionality, use_channel_wise_attention=True)
 
         task_features = self.dense_net_embedding.forward(
             x=torch.cat([x_support_set, x_target_set], dim=0), dropout_training=True)
@@ -352,25 +366,30 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         self.current_iter = 0
 
-        self.classifier = DenseNetActivationNormNetworkWithAttention(input_shape=encoded_x.shape,
-                                                                     num_output_classes=self.args.num_classes_per_set,
-                                                                     num_stages=1, use_channel_wise_attention=True,
-                                                                     num_filters=16,
-                                                                     num_support_set_steps=self.args.num_support_set_steps,
-                                                                     num_target_set_steps=self.args.num_support_set_steps,
-                                                                     num_blocks_per_stage=1)
+        output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
+            self.num_classes_per_set * self.num_continual_subtasks_per_task
 
-        print("init learning rate", self.args.init_learning_rate)
+        self.classifier = VGGActivationNormNetworkWithAttention(input_shape=encoded_x.shape,
+                                                                num_output_classes=output_units,
+                                                                num_stages=1, use_channel_wise_attention=True,
+                                                                num_filters=48,
+                                                                num_support_set_steps=2 *
+                                                                                      self.num_continual_subtasks_per_task
+                                                                                      * self.num_support_set_steps,
+                                                                num_target_set_steps=self.num_support_set_steps + 1,
+                                                                num_blocks_per_stage=1)
+
+        print("init learning rate", self.init_learning_rate)
         names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
 
         task_name_params = self.get_inner_loop_parameter_dict(self.named_parameters())
 
-        if self.args.num_target_set_steps > 0:
+        if self.num_target_set_steps > 0:
             preds, penultimate_features_x = self.classifier.forward(x=encoded_x, num_step=0, return_features=True)
-            if 'task_embedding' in self.args.conditional_information:
+            if 'task_embedding' in self.conditional_information:
                 self.task_relational_network = TaskRelationalEmbedding(input_shape=support_set_features.shape,
-                                                                       num_samples_per_class=self.args.num_samples_per_class,
-                                                                       num_classes_per_set=self.args.num_classes_per_set)
+                                                                       num_samples_per_support_class=self.num_samples_per_support_class,
+                                                                       num_classes_per_set=self.num_classes_per_set)
                 relational_encoding_x = self.task_relational_network.forward(x_img=support_set_features)
                 relational_embedding_shape = relational_encoding_x.shape
             else:
@@ -378,44 +397,44 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
                 relational_embedding_shape = None
 
             x_support_set_task = F.avg_pool2d(
-                encoded_x[:self.args.num_classes_per_set * (self.args.num_samples_per_class)],
+                encoded_x[:self.num_classes_per_set * (self.num_samples_per_support_class)],
                 encoded_x.shape[-1]).squeeze()
             x_target_set_task = F.avg_pool2d(
-                encoded_x[self.args.num_classes_per_set * (self.args.num_samples_per_class):],
+                encoded_x[self.num_classes_per_set * (self.num_samples_per_support_class):],
                 encoded_x.shape[-1]).squeeze()
             x_support_set_classifier_features = F.avg_pool2d(penultimate_features_x[
-                                                             :self.args.num_classes_per_set * (
-                                                                 self.args.num_samples_per_class)],
+                                                             :self.num_classes_per_set * (
+                                                                 self.num_samples_per_support_class)],
                                                              penultimate_features_x.shape[-2]).squeeze()
             x_target_set_classifier_features = F.avg_pool2d(
-                penultimate_features_x[self.args.num_classes_per_set * (self.args.num_samples_per_class):],
+                penultimate_features_x[self.num_classes_per_set * (self.num_samples_per_support_class):],
                 penultimate_features_x.shape[-2]).squeeze()
 
             self.critic_network = CriticNetwork(
                 task_embedding_shape=relational_embedding_shape,
-                num_classes_per_set=self.args.num_classes_per_set,
+                num_classes_per_set=self.num_classes_per_set,
                 support_set_feature_shape=x_support_set_task.shape,
                 target_set_feature_shape=x_target_set_task.shape,
                 support_set_classifier_pre_last_features=x_support_set_classifier_features.shape,
                 target_set_classifier_pre_last_features=x_target_set_classifier_features.shape,
 
-                num_target_samples=self.args.num_target_samples,
-                num_samples_per_class=self.args.num_samples_per_class,
-                logit_shape=preds[self.args.num_classes_per_set * (self.args.num_samples_per_class):].shape,
-                args=self.args, support_set_label_shape=(
-                    self.args.num_classes_per_set * (self.args.num_samples_per_class), self.args.num_classes_per_set))
+                num_target_samples=self.num_samples_per_target_class,
+                num_support_samples=self.num_samples_per_support_class,
+                logit_shape=preds[self.num_classes_per_set * (self.num_samples_per_support_class):].shape,
+                conditional_information=self.conditional_information,
+                support_set_label_shape=(
+                    self.num_classes_per_set * (self.num_samples_per_support_class), self.num_classes_per_set))
 
-        self.inner_loop_optimizer = LSLRGradientDescentLearningRule(device=init_device,
-                                                                    total_num_inner_loop_steps=2 * self.args.num_support_set_steps + self.args.num_target_set_steps,
-                                                                    learnable_learning_rates=self.args.learnable_learning_rates,
-                                                                    init_learning_rate=self.args.init_learning_rate)
+        self.inner_loop_optimizer = LSLRGradientDescentLearningRule(
+            total_num_inner_loop_steps=2 * (
+                    self.num_continual_subtasks_per_task * self.num_support_set_steps) + self.num_target_set_steps + 1,
+            learnable_learning_rates=self.learnable_learning_rates,
+            init_learning_rate=self.init_learning_rate)
 
         self.inner_loop_optimizer.initialise(names_weights_dict=names_weights_copy)
         print("Inner Loop parameters")
         for key, value in self.inner_loop_optimizer.named_parameters():
             print(key, value.shape)
-        self.use_cuda = self.args.use_cuda
-        self.device = self.device
 
         print("Outer Loop parameters")
         for name, param in self.named_parameters():
@@ -424,23 +443,26 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         self.exclude_list = None
         self.switch_opt_params(exclude_list=self.exclude_list)
+        self.device = torch.device('cpu')
+        if torch.cuda.is_available():
 
-        if type(self.device) is list:
-            self.to(self.device[0])
-            self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
-            self.device = self.device[0]
-        else:
-            self.to(self.device)
+            if torch.cuda.device_count() > 1:
+                self.to(torch.cuda.current_device())
+                self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
+            else:
+                self.to(torch.cuda.current_device())
+
+            self.device = torch.cuda.current_device()
 
     def switch_opt_params(self, exclude_list):
         print("current trainable params")
         for name, param in self.trainable_names_parameters(exclude_params_with_string=exclude_list):
             print(name, param.shape)
-        self.optimizer = optim.Adam(self.trainable_parameters(exclude_list), lr=self.args.meta_learning_rate,
-                                    weight_decay=self.args.weight_decay, amsgrad=False)
+        self.optimizer = optim.Adam(self.trainable_parameters(exclude_list), lr=self.meta_learning_rate,
+                                    weight_decay=self.weight_decay, amsgrad=False)
 
-        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=self.optimizer, T_max=self.args.total_epochs,
-                                                              eta_min=self.args.min_learning_rate)
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=self.optimizer, T_max=self.total_epochs,
+                                                              eta_min=self.min_learning_rate)
 
     def net_forward(self, x, y, weights, backup_running_statistics, training, num_step,
                     return_features=False):
@@ -493,13 +515,16 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         :return: A tensor to be used to compute the weighted average of the loss, useful for
         the MSL (Multi Step Loss) mechanism.
         """
-        loss_weights = torch.ones(size=(self.args.number_of_training_steps_per_iter,),
-                                  device=self.device) / self.args.number_of_training_steps_per_iter
-        early_steps_decay_rate = (1. / self.args.number_of_training_steps_per_iter) / 100.
+        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task,),
+                                  device=torch.cuda.current_device()) / (
+                               self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)
+        early_steps_decay_rate = (1. / (
+                self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)) / 100.
 
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
-        loss_weights = torch.max(input=loss_weights, other=torch.ones(loss_weights.shape, device=self.device) * 0.001)
+        loss_weights = torch.max(input=loss_weights,
+                                 other=torch.ones(loss_weights.shape, device=torch.cuda.current_device()) * 0.001)
 
         loss_weights[-1] = 1. - torch.sum(loss_weights[:-1])
 
@@ -518,7 +543,7 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         :return: A dictionary with the collected losses of the current outer forward propagation.
         """
 
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original = data_batch
+        x_support_set, x_target_set, y_support_set, y_target_set = data_batch
 
         self.classifier.zero_grad()
 
@@ -528,9 +553,9 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         per_task_preds = []
         num_losses = 2
-        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(self.device)
-        step_magnitude = (1.0 / num_losses) / self.args.total_epochs
-        current_epoch_step_magnitude = torch.ones(1).to(self.device) * (step_magnitude * (epoch + 1))
+        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(torch.cuda.current_device())
+        step_magnitude = (1.0 / num_losses) / self.total_epochs
+        current_epoch_step_magnitude = torch.ones(1).to(torch.cuda.current_device()) * (step_magnitude * (epoch + 1))
         importance_vector[0] = importance_vector[0] - current_epoch_step_magnitude
         importance_vector[1] = importance_vector[1] + current_epoch_step_magnitude
         pre_target_loss_update_loss = []
@@ -538,12 +563,8 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         post_target_loss_update_loss = []
         post_target_loss_update_acc = []
         saved_logits_list = None
-        num_support_set_steps = self.args.num_support_set_steps
+        num_support_set_steps = self.num_support_set_steps
         task_size = x_target_set.shape[0]
-
-        if self.args.use_augmentations == True:
-            x_support_set = x_support_set_augmented
-            x_target_set = x_target_set_augmented
 
         for task_id, (x_support_set_task, y_support_set_task, x_target_set_task, y_target_set_task) in \
                 enumerate(zip(x_support_set,
@@ -554,100 +575,113 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
             names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
 
             c, h, w = x_target_set_task.shape[-3:]
-            # in the future try to adapt the features using a relational component
-            x_support_set_task = x_support_set_task.view(-1, c, h, w)
-            y_support_set_task = y_support_set_task.view(-1)
-            x_target_set_task = x_target_set_task.view(-1, c, h, w)
-            y_target_set_task = y_target_set_task.view(-1)
 
+            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
+            y_target_set_task = y_target_set_task.view(-1).to(torch.cuda.current_device())
+            x_support_set_task = x_support_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
+            y_support_set_task = y_support_set_task.to(torch.cuda.current_device())
+            # print(x_target_set_task.shape)
             image_embedding = self.dense_net_embedding.forward(
                 x=torch.cat([x_support_set_task, x_target_set_task], dim=0), dropout_training=True)
 
-            x_support_set_task = image_embedding[:x_support_set.shape[1] * x_support_set.shape[2]]
-            x_target_set_task = image_embedding[x_support_set.shape[1] * x_support_set.shape[2]:]
+            x_support_set_task = image_embedding[:x_support_set_task.shape[0]]
+            x_target_set_task = image_embedding[x_support_set_task.shape[0]:]
 
-            if self.args.num_target_set_steps > 0:
-                x_support_set_task_features = F.avg_pool2d(x_support_set_task, x_support_set_task.shape[-1]).squeeze()
-                x_target_set_task_features = F.avg_pool2d(x_target_set_task,
-                                                          x_support_set_task.shape[-1]).squeeze()
-                if self.task_relational_network is not None:
-                    task_embedding = self.task_relational_network.forward(x_img=x_support_set_task_features)
+            x_support_set_task = x_support_set_task.view(
+                (self.num_continual_subtasks_per_task, self.num_classes_per_set, self.num_samples_per_support_class,
+                 x_support_set_task.shape[-3],
+                 x_support_set_task.shape[-2], x_support_set_task.shape[-1]))
+
+            target_set_per_step_loss = []
+            importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
+            step_idx = 0
+            for sub_task_id, (x_support_set_sub_task, y_support_set_sub_task) in enumerate(zip(x_support_set_task,
+                                                                                               y_support_set_task)):
+
+                # in the future try to adapt the features using a relational component
+                x_support_set_sub_task = x_support_set_sub_task.view(-1, x_support_set_task.shape[-3],
+                                                                     x_support_set_task.shape[-2],
+                                                                     x_support_set_task.shape[-1])
+                y_support_set_sub_task = y_support_set_sub_task.view(-1)
+
+                if self.num_target_set_steps > 0:
+                    x_support_set_sub_task_features = F.avg_pool2d(x_support_set_sub_task,
+                                                                   x_support_set_sub_task.shape[-1]).squeeze()
+                    x_target_set_task_features = F.avg_pool2d(x_target_set_task,
+                                                              x_target_set_task.shape[-1]).squeeze()
+                    if self.task_relational_network is not None:
+                        task_embedding = self.task_relational_network.forward(x_img=x_support_set_sub_task_features)
+                    else:
+                        task_embedding = None
                 else:
                     task_embedding = None
-            else:
-                task_embedding = None
+                # print(x_target_set_task.shape, x_target_set_task_features.shape)
 
-            importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
-            target_set_per_step_loss = []
-            for num_step in range(self.args.num_support_set_steps):
-                support_outputs = self.net_forward(x=x_support_set_task,
-                                                   y=y_support_set_task,
-                                                   weights=names_weights_copy,
-                                                   backup_running_statistics=
-                                                   True if (num_step == 0) else False,
-                                                   training=True, num_step=num_step,
-                                                   return_features=True)
+                for num_step in range(self.num_support_set_steps):
+                    support_outputs = self.net_forward(x=x_support_set_sub_task,
+                                                       y=y_support_set_sub_task,
+                                                       weights=names_weights_copy,
+                                                       backup_running_statistics=
+                                                       True if (num_step == 0) else False,
+                                                       training=True,
+                                                       num_step=step_idx,
+                                                       return_features=True)
 
-                names_weights_copy = self.apply_inner_loop_update(loss=support_outputs['loss'],
-                                                                  names_weights_copy=names_weights_copy,
-                                                                  use_second_order=use_second_order,
-                                                                  current_step_idx=num_step)
+                    names_weights_copy = self.apply_inner_loop_update(loss=support_outputs['loss'],
+                                                                      names_weights_copy=names_weights_copy,
+                                                                      use_second_order=use_second_order,
+                                                                      current_step_idx=step_idx)
+                    step_idx += 1
+                    if self.use_multi_step_loss_optimization:
+                        target_outputs = self.net_forward(x=x_target_set_task,
+                                                          y=y_target_set_task, weights=names_weights_copy,
+                                                          backup_running_statistics=False, training=True,
+                                                          num_step=step_idx,
+                                                          return_features=True)
+                        target_set_per_step_loss.append(target_outputs['loss'])
+                        step_idx += 1
 
-                # 0, 5 -> 4, 9 ->
+            if not self.use_multi_step_loss_optimization:
                 target_outputs = self.net_forward(x=x_target_set_task,
                                                   y=y_target_set_task, weights=names_weights_copy,
                                                   backup_running_statistics=False, training=True,
-                                                  num_step=num_step + num_support_set_steps,
+                                                  num_step=step_idx,
                                                   return_features=True)
-                # print(x_support_set_task.shape, x_target_set_task.shape)
-
-            if self.args.use_multi_step_loss_optimization:
-                target_set_per_step_loss.append(target_outputs['loss'])
-                target_set_per_step_loss = torch.sum(torch.stack(target_set_per_step_loss, dim=0) * importance_weights)
-                target_set_loss = target_set_per_step_loss
-            else:
                 target_set_loss = target_outputs['loss']
+                step_idx += 1
+            else:
+                target_set_loss = torch.sum(
+                    torch.stack(target_set_per_step_loss, dim=0) * importance_weights)
 
-            if self.args.save_preds:
-                if saved_logits_list is None:
-                    saved_logits_list = []
-
-                saved_logits_list.extend(target_outputs['preds'])
-
-            y_support_one_hot = torch.zeros(y_support_set_task.shape[0], self.args.num_classes_per_set).to(
-                self.device)
-            y_support_one_hot.scatter_(1, y_support_set_task.view(-1, 1), 1)
-
-            for num_step in range(self.args.num_target_set_steps):
-                if num_step == 0:
-                    support_set_features = F.avg_pool2d(support_outputs['features'],
-                                                        support_outputs['features'].shape[-1]).squeeze()
-                    pre_updated_target_features = F.avg_pool2d(target_outputs['features'],
-                                                               support_set_features.shape[-1]).squeeze()
-
-                predicted_loss = self.critic_network.forward(support_set_features=x_support_set_task_features,
-                                                             target_set_features=x_target_set_task_features,
-                                                             logits=target_outputs['preds'],
-                                                             support_set_classifier_pre_last_layer=support_set_features,
-                                                             target_set_classifier_pre_last_layer=pre_updated_target_features,
-                                                             support_set_labels=y_support_one_hot,
+            for num_step in range(self.num_target_set_steps):
+                target_outputs = self.net_forward(x=x_target_set_task,
+                                                  y=y_target_set_task, weights=names_weights_copy,
+                                                  backup_running_statistics=False, training=True,
+                                                  num_step=step_idx,
+                                                  return_features=True)
+                predicted_loss = self.critic_network.forward(logits=target_outputs['preds'],
                                                              task_embedding=task_embedding)
 
                 names_weights_copy = self.apply_inner_loop_update(loss=predicted_loss,
                                                                   names_weights_copy=names_weights_copy,
                                                                   use_second_order=use_second_order,
-                                                                  current_step_idx=num_step)
-            if self.args.num_target_set_steps > 0:
+                                                                  current_step_idx=step_idx)
+                step_idx += 1
+
+            if self.num_target_set_steps > 0:
                 post_update_outputs = self.net_forward(
                     x=x_target_set_task,
                     y=y_target_set_task, weights=names_weights_copy,
                     backup_running_statistics=False, training=True,
-                    num_step=2 * num_support_set_steps,
+                    num_step=step_idx,
                     return_features=True)
-                post_update_loss, post_update_target_preds, post_updated_target_features = post_update_outputs['loss'], \
-                                                                                           post_update_outputs['preds'], \
+                post_update_loss, post_update_target_preds, post_updated_target_features = post_update_outputs[
+                                                                                               'loss'], \
+                                                                                           post_update_outputs[
+                                                                                               'preds'], \
                                                                                            post_update_outputs[
                                                                                                'features']
+                step_idx += 1
             else:
                 post_update_loss, post_update_target_preds, post_updated_target_features = target_set_loss, \
                                                                                            target_outputs['preds'], \
@@ -656,12 +690,14 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
             pre_target_loss_update_loss.append(target_set_loss)
             pre_softmax_target_preds = F.softmax(target_outputs['preds'], dim=1).argmax(dim=1)
-            pre_update_accuracy = torch.eq(pre_softmax_target_preds, y_target_set_task).data.cpu().float().mean()
+            pre_update_accuracy = torch.eq(pre_softmax_target_preds,
+                                           y_target_set_task).data.cpu().float().mean()
             pre_target_loss_update_acc.append(pre_update_accuracy)
 
             post_target_loss_update_loss.append(post_update_loss)
             post_softmax_target_preds = F.softmax(post_update_target_preds, dim=1).argmax(dim=1)
-            post_update_accuracy = torch.eq(post_softmax_target_preds, y_target_set_task).data.cpu().float().mean()
+            post_update_accuracy = torch.eq(post_softmax_target_preds,
+                                            y_target_set_task).data.cpu().float().mean()
             post_target_loss_update_acc.append(post_update_accuracy)
 
             loss = target_outputs['loss'] * importance_vector[0] + post_update_loss * importance_vector[1]
@@ -674,13 +710,18 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
             if not training_phase:
                 self.classifier.restore_backup_stats()
 
+                x_support_set_sub_task = x_support_set_sub_task.to(torch.device('cpu'))
+                y_support_set_sub_task = y_support_set_sub_task.to(torch.device('cpu'))
+                x_target_set_task = x_target_set_task.to(torch.device('cpu'))
+                y_target_set_task = y_target_set_task.to(torch.device('cpu'))
+
         loss_metric_dict = dict()
         loss_metric_dict['pre_target_loss_update_loss'] = post_target_loss_update_loss
         loss_metric_dict['pre_target_loss_update_acc'] = pre_target_loss_update_acc
         loss_metric_dict['post_target_loss_update_loss'] = post_target_loss_update_loss
         loss_metric_dict['post_target_loss_update_acc'] = post_target_loss_update_acc
 
-        if self.args.save_preds:
+        if self.save_preds:
             loss_metric_dict['saved_logits'] = torch.cat(saved_logits_list, dim=0)
 
         losses = self.get_across_task_loss_metrics(total_losses=total_per_step_losses,
@@ -725,32 +766,12 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         if not self.training:
             self.train()
 
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original = data_batch
-
-        if type(self.device) is list:
-            init_device = self.device[0]
-        else:
-            init_device = self.device
-
-        x_support_set_augmented = torch.Tensor(x_support_set_augmented).float().to(device=init_device)
-        x_support_set = torch.Tensor(x_support_set).float().to(device=init_device)
-        x_target_set = torch.Tensor(x_target_set).float().to(device=init_device)
-        x_target_set_augmented = torch.Tensor(x_target_set_augmented).float().to(device=init_device)
-        y_support_set = torch.Tensor(y_support_set).long().to(device=init_device)
-        y_target_set = torch.Tensor(y_target_set).long().to(device=init_device)
-        y_support_set_original = torch.Tensor(y_support_set_original).long().to(device=init_device)
-        y_target_set_original = torch.Tensor(y_target_set_original).long().to(device=init_device)
-
-        data_batch = (
-            x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set,
-            y_support_set_original,
-            y_target_set_original)
-
         losses, per_task_preds = self.train_forward_prop(data_batch=data_batch, epoch=epoch)
         exclude_string = None
 
         self.meta_update(loss=losses['loss'], exclude_string_list=exclude_string)
-        losses['learning_rate'] = self.scheduler.get_lr()[0]
+        losses['opt:learning_rate'] = self.scheduler.get_lr()[0]
+        losses['opt:weight_decay'] = self.weight_decay
         self.zero_grad()
 
         self.current_iter += 1
@@ -767,27 +788,6 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         if self.training:
             self.eval()
-
-        if type(self.device) is list:
-            init_device = self.device[0]
-        else:
-            init_device = self.device
-
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original = data_batch
-
-        x_support_set_augmented = torch.Tensor(x_support_set_augmented).float().to(device=init_device)
-        x_support_set = torch.Tensor(x_support_set).float().to(device=init_device)
-        x_target_set = torch.Tensor(x_target_set).float().to(device=init_device)
-        x_target_set_augmented = torch.Tensor(x_target_set_augmented).float().to(device=init_device)
-        y_support_set = torch.Tensor(y_support_set).long().to(device=init_device)
-        y_target_set = torch.Tensor(y_target_set).long().to(device=init_device)
-        y_support_set_original = torch.Tensor(y_support_set_original).long().to(device=init_device)
-        y_target_set_original = torch.Tensor(y_target_set_original).long().to(device=init_device)
-
-        data_batch = (
-            x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set,
-            y_support_set_original,
-            y_target_set_original)
 
         losses, per_task_preds = self.evaluation_forward_prop(data_batch=data_batch, epoch=self.current_epoch)
 
@@ -826,23 +826,54 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
 
 class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
-    def __init__(self, im_shape, device, args):
+    def __init__(self, batch_size, seed, num_classes_per_set, num_samples_per_support_class, image_channels,
+                 num_filters, num_blocks_per_stage, num_stages, dropout_rate, output_spatial_dimensionality,
+                 image_height, image_width, num_support_set_steps, init_learning_rate, num_target_set_steps,
+                 conditional_information, min_learning_rate, total_epochs, weight_decay, meta_learning_rate,
+                 num_samples_per_target_class, **kwargs):
         """
         Initializes a MAML few shot learning system
         :param im_shape: The images input size, in batch, c, h, w shape
         :param device: The device to use to use the model on.
         :param args: A namedtuple of arguments specifying various hyperparameters.
         """
-        super(VGGMAMLFewShotClassifier, self).__init__(im_shape=im_shape, device=device, args=args)
+        super(VGGMAMLFewShotClassifier, self).__init__(batch_size, seed, num_classes_per_set,
+                                                       num_samples_per_support_class,
+                                                       num_samples_per_target_class, image_channels,
+                                                       num_filters, num_blocks_per_stage, num_stages,
+                                                       dropout_rate, output_spatial_dimensionality,
+                                                       image_height, image_width, num_support_set_steps,
+                                                       init_learning_rate, num_target_set_steps,
+                                                       conditional_information, min_learning_rate, total_epochs,
+                                                       weight_decay, meta_learning_rate, **kwargs)
 
-        self.args = args
-        self.args.device = device
-        self.device = device
-        self.batch_size = args.batch_size
-        self.use_cuda = args.use_cuda
-        self.im_shape = im_shape
+        self.batch_size = batch_size
         self.current_epoch = -1
-        self.rng = set_torch_seed(seed=args.train_seed)
+        self.rng = set_torch_seed(seed=seed)
+        self.num_classes_per_set = num_classes_per_set
+        self.num_samples_per_support_class = num_samples_per_support_class
+        self.image_channels = image_channels
+        self.num_filters = num_filters
+        self.num_blocks_per_stage = num_blocks_per_stage
+        self.num_stages = num_stages
+        self.dropout_rate = dropout_rate
+        self.output_spatial_dimensionality = output_spatial_dimensionality
+        self.image_height = image_height
+        self.image_width = image_width
+        self.num_support_set_steps = num_support_set_steps
+        self.init_learning_rate = init_learning_rate
+        self.num_target_set_steps = num_target_set_steps
+        self.conditional_information = conditional_information
+        self.min_learning_rate = min_learning_rate
+        self.total_epochs = total_epochs
+        self.weight_decay = weight_decay
+        self.meta_learning_rate = meta_learning_rate
+        self.current_epoch = -1
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        self.rng = set_torch_seed(seed=seed)
 
     def param_dict_to_vector(self, param_dict):
 
@@ -867,14 +898,14 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
     def build_module(self):
         support_set_shape = (
-            self.args.num_classes_per_set * self.args.num_samples_per_class,
-            self.args.image_channels,
-            self.args.image_height, self.args.image_width)
+            self.num_classes_per_set * self.num_samples_per_support_class,
+            self.image_channels,
+            self.image_height, self.image_width)
 
         target_set_shape = (
-            self.args.num_classes_per_set * self.args.num_target_samples,
-            self.args.image_channels,
-            self.args.image_height, self.args.image_width)
+            self.num_classes_per_set * self.num_samples_per_target_class,
+            self.image_channels,
+            self.image_height, self.image_width)
 
         x_support_set = torch.ones(support_set_shape)
         x_target_set = torch.ones(target_set_shape)
@@ -887,34 +918,30 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         num_target_samples = x_target_set.shape[0]
         num_support_samples = x_support_set.shape[0]
 
-
-        if type(self.device) is list:
-            init_device = self.device[0]
-        else:
-            init_device = self.device
-
+        output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
+            self.num_classes_per_set * self.num_continual_subtasks_per_task
 
         self.current_iter = 0
 
         self.classifier = VGGActivationNormNetwork(input_shape=torch.cat([x_support_set, x_target_set], dim=0).shape,
-                                                   num_output_classes=self.args.num_classes_per_set,
+                                                   num_output_classes=output_units,
                                                    num_stages=4, use_channel_wise_attention=True,
                                                    num_filters=48,
-                                                   num_support_set_steps=self.args.num_support_set_steps,
-                                                   num_target_set_steps=self.args.num_support_set_steps,
+                                                   num_support_set_steps=2 * self.num_continual_subtasks_per_task * self.num_support_set_steps,
+                                                   num_target_set_steps=self.num_target_set_steps + 1,
                                                    )
 
-        print("init learning rate", self.args.init_learning_rate)
+        print("init learning rate", self.init_learning_rate)
         names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
 
         task_name_params = self.get_inner_loop_parameter_dict(self.named_parameters())
 
-        if self.args.num_target_set_steps > 0:
+        if self.num_target_set_steps > 0:
             self.dense_net_embedding = SqueezeExciteDenseNetEmbeddingSmallNetwork(
-                im_shape=torch.cat([x_support_set, x_target_set], dim=0).shape, num_filters=self.args.num_filters,
-                num_blocks_per_stage=self.args.num_blocks_per_stage,
-                num_stages=self.args.num_stages, average_pool_outputs=False, dropout_rate=self.args.dropout_rate,
-                output_spatial_dimensionality=self.args.output_spatial_dimensionality, use_channel_wise_attention=True)
+                im_shape=torch.cat([x_support_set, x_target_set], dim=0).shape, num_filters=self.num_filters,
+                num_blocks_per_stage=self.num_blocks_per_stage,
+                num_stages=self.num_stages, average_pool_outputs=False, dropout_rate=self.dropout_rate,
+                output_spatial_dimensionality=self.output_spatial_dimensionality, use_channel_wise_attention=True)
 
             task_features = self.dense_net_embedding.forward(
                 x=torch.cat([x_support_set, x_target_set], dim=0), dropout_training=True)
@@ -924,10 +951,10 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
             preds, penultimate_features_x = self.classifier.forward(x=torch.cat([x_support_set, x_target_set], dim=0),
                                                                     num_step=0, return_features=True)
-            if 'task_embedding' in self.args.conditional_information:
+            if 'task_embedding' in self.conditional_information:
                 self.task_relational_network = TaskRelationalEmbedding(input_shape=support_set_features.shape,
-                                                                       num_samples_per_class=self.args.num_samples_per_class,
-                                                                       num_classes_per_set=self.args.num_classes_per_set)
+                                                                       num_samples_per_support_class=self.num_samples_per_support_class,
+                                                                       num_classes_per_set=self.num_classes_per_set)
                 relational_encoding_x = self.task_relational_network.forward(x_img=support_set_features)
                 relational_embedding_shape = relational_encoding_x.shape
             else:
@@ -935,44 +962,44 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
                 relational_embedding_shape = None
 
             x_support_set_task = F.avg_pool2d(
-                encoded_x[:self.args.num_classes_per_set * (self.args.num_samples_per_class)],
+                encoded_x[:self.num_classes_per_set * (self.num_samples_per_support_class)],
                 encoded_x.shape[-1]).squeeze()
             x_target_set_task = F.avg_pool2d(
-                encoded_x[self.args.num_classes_per_set * (self.args.num_samples_per_class):],
+                encoded_x[self.num_classes_per_set * (self.num_samples_per_support_class):],
                 encoded_x.shape[-1]).squeeze()
             x_support_set_classifier_features = F.avg_pool2d(penultimate_features_x[
-                                                             :self.args.num_classes_per_set * (
-                                                                 self.args.num_samples_per_class)],
+                                                             :self.num_classes_per_set * (
+                                                                 self.num_samples_per_support_class)],
                                                              penultimate_features_x.shape[-2]).squeeze()
             x_target_set_classifier_features = F.avg_pool2d(
-                penultimate_features_x[self.args.num_classes_per_set * (self.args.num_samples_per_class):],
+                penultimate_features_x[self.num_classes_per_set * (self.num_samples_per_support_class):],
                 penultimate_features_x.shape[-2]).squeeze()
 
             self.critic_network = CriticNetwork(
                 task_embedding_shape=relational_embedding_shape,
-                num_classes_per_set=self.args.num_classes_per_set,
+                num_classes_per_set=self.num_classes_per_set,
                 support_set_feature_shape=x_support_set_task.shape,
                 target_set_feature_shape=x_target_set_task.shape,
                 support_set_classifier_pre_last_features=x_support_set_classifier_features.shape,
                 target_set_classifier_pre_last_features=x_target_set_classifier_features.shape,
 
-                num_target_samples=self.args.num_target_samples,
-                num_samples_per_class=self.args.num_samples_per_class,
-                logit_shape=preds[self.args.num_classes_per_set * (self.args.num_samples_per_class):].shape,
-                args=self.args, support_set_label_shape=(
-                    self.args.num_classes_per_set * (self.args.num_samples_per_class), self.args.num_classes_per_set))
+                num_target_samples=self.num_samples_per_target_class,
+                num_support_samples=self.num_samples_per_support_class,
+                logit_shape=preds[self.num_classes_per_set * (self.num_samples_per_support_class):].shape,
+                support_set_label_shape=(
+                    self.num_classes_per_set * (self.num_samples_per_support_class), self.num_classes_per_set),
+                conditional_information=self.conditional_information)
 
-        self.inner_loop_optimizer = LSLRGradientDescentLearningRule(device=init_device,
-                                                                    total_num_inner_loop_steps=2 * self.args.num_support_set_steps + self.args.num_target_set_steps,
-                                                                    learnable_learning_rates=self.args.learnable_learning_rates,
-                                                                    init_learning_rate=self.args.init_learning_rate)
+        self.inner_loop_optimizer = LSLRGradientDescentLearningRule(
+            total_num_inner_loop_steps=2 * (
+                    self.num_continual_subtasks_per_task * self.num_support_set_steps) + self.num_target_set_steps + 1,
+            learnable_learning_rates=self.learnable_learning_rates,
+            init_learning_rate=self.init_learning_rate)
 
         self.inner_loop_optimizer.initialise(names_weights_dict=names_weights_copy)
         print("Inner Loop parameters")
         for key, value in self.inner_loop_optimizer.named_parameters():
             print(key, value.shape)
-        self.use_cuda = self.args.use_cuda
-        self.device = self.device
 
         print("Outer Loop parameters")
         for name, param in self.named_parameters():
@@ -982,22 +1009,26 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         self.exclude_list = None
         self.switch_opt_params(exclude_list=self.exclude_list)
 
-        if type(self.device) is list:
-            self.to(self.device[0])
-            self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
-            self.device = self.device[0]
-        else:
-            self.to(self.device)
+        self.device = torch.device('cpu')
+        if torch.cuda.is_available():
+
+            if torch.cuda.device_count() > 1:
+                self.to(torch.cuda.current_device())
+                self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
+            else:
+                self.to(torch.cuda.current_device())
+
+            self.device = torch.cuda.current_device()
 
     def switch_opt_params(self, exclude_list):
         print("current trainable params")
         for name, param in self.trainable_names_parameters(exclude_params_with_string=exclude_list):
             print(name, param.shape)
-        self.optimizer = optim.Adam(self.trainable_parameters(exclude_list), lr=self.args.meta_learning_rate,
-                                    weight_decay=self.args.weight_decay, amsgrad=False)
+        self.optimizer = AdamW(self.trainable_parameters(exclude_list), lr=self.meta_learning_rate,
+                               weight_decay=self.weight_decay, amsgrad=False)
 
-        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=self.optimizer, T_max=self.args.total_epochs,
-                                                              eta_min=self.args.min_learning_rate)
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=self.optimizer, T_max=self.total_epochs,
+                                                              eta_min=self.min_learning_rate)
 
     def net_forward(self, x, y, weights, backup_running_statistics, training, num_step,
                     return_features=False):
@@ -1050,13 +1081,16 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         :return: A tensor to be used to compute the weighted average of the loss, useful for
         the MSL (Multi Step Loss) mechanism.
         """
-        loss_weights = torch.ones(size=(self.args.number_of_training_steps_per_iter,),
-                                  device=self.device) / self.args.number_of_training_steps_per_iter
-        early_steps_decay_rate = (1. / self.args.number_of_training_steps_per_iter) / 100.
+        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task,),
+                                  device=torch.cuda.current_device()) / (
+                               self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)
+        early_steps_decay_rate = (1. / (
+                self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)) / 100.
 
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
-        loss_weights = torch.max(input=loss_weights, other=torch.ones(loss_weights.shape, device=self.device) * 0.001)
+        loss_weights = torch.max(input=loss_weights,
+                                 other=torch.ones(loss_weights.shape, device=torch.cuda.current_device()) * 0.001)
 
         loss_weights[-1] = 1. - torch.sum(loss_weights[:-1])
 
@@ -1075,7 +1109,7 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         :return: A dictionary with the collected losses of the current outer forward propagation.
         """
 
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original = data_batch
+        x_support_set, x_target_set, y_support_set, y_target_set = data_batch
 
         self.classifier.zero_grad()
 
@@ -1085,22 +1119,17 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         per_task_preds = []
         num_losses = 2
-        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(self.device)
-        step_magnitude = (1.0 / num_losses) / self.args.total_epochs
-        current_epoch_step_magnitude = torch.ones(1).to(self.device) * (step_magnitude * (epoch + 1))
+        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(torch.cuda.current_device())
+        step_magnitude = (1.0 / num_losses) / self.total_epochs
+        current_epoch_step_magnitude = torch.ones(1).to(torch.cuda.current_device()) * (step_magnitude * (epoch + 1))
+
         importance_vector[0] = importance_vector[0] - current_epoch_step_magnitude
         importance_vector[1] = importance_vector[1] + current_epoch_step_magnitude
+
         pre_target_loss_update_loss = []
         pre_target_loss_update_acc = []
         post_target_loss_update_loss = []
         post_target_loss_update_acc = []
-        saved_logits_list = None
-        num_support_set_steps = self.args.num_support_set_steps
-        task_size = x_target_set.shape[0]
-
-        if self.args.use_augmentations == True:
-            x_support_set = x_support_set_augmented
-            x_target_set = x_target_set_augmented
 
         for task_id, (x_support_set_task, y_support_set_task, x_target_set_task, y_target_set_task) in \
                 enumerate(zip(x_support_set,
@@ -1108,102 +1137,106 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
                               x_target_set,
                               y_target_set)):
 
-            names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
-
             c, h, w = x_target_set_task.shape[-3:]
-            # in the future try to adapt the features using a relational component
-            x_support_set_task = x_support_set_task.view(-1, c, h, w)
-            y_support_set_task = y_support_set_task.view(-1)
-            x_target_set_task = x_target_set_task.view(-1, c, h, w)
-            y_target_set_task = y_target_set_task.view(-1)
+            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
+            y_target_set_task = y_target_set_task.view(-1).to(torch.cuda.current_device())
+            target_set_per_step_loss = []
+            importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
+            step_idx = 0
+            for sub_task_id, (x_support_set_sub_task, y_support_set_sub_task) in \
+                    enumerate(zip(x_support_set_task,
+                                  y_support_set_task)):
 
+                names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
 
-            if self.args.num_target_set_steps > 0 and 'task_embedding' in self.args.conditional_information:
-                image_embedding = self.dense_net_embedding.forward(
-                    x=torch.cat([x_support_set_task, x_target_set_task], dim=0), dropout_training=True)
-                x_support_set_task_features = image_embedding[:x_support_set_task.shape[0]]
-                x_target_set_task_features =  image_embedding[x_support_set_task.shape[0]:]
-                x_support_set_task_features = F.avg_pool2d(x_support_set_task_features, x_support_set_task_features.shape[-1]).squeeze()
-                x_target_set_task_features = F.avg_pool2d(x_target_set_task_features,
-                                                          x_target_set_task_features.shape[-1]).squeeze()
-                if self.task_relational_network is not None:
-                    task_embedding = self.task_relational_network.forward(x_img=x_support_set_task_features)
+                # in the future try to adapt the features using a relational component
+                x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(torch.cuda.current_device())
+                y_support_set_sub_task = y_support_set_sub_task.view(-1).to(torch.cuda.current_device())
+
+                if self.num_target_set_steps > 0 and 'task_embedding' in self.conditional_information:
+                    image_embedding = self.dense_net_embedding.forward(
+                        x=torch.cat([x_support_set_sub_task, x_target_set_task], dim=0), dropout_training=True)
+                    x_support_set_task_features = image_embedding[:x_support_set_sub_task.shape[0]]
+                    x_target_set_task_features = image_embedding[x_support_set_sub_task.shape[0]:]
+                    x_support_set_task_features = F.avg_pool2d(x_support_set_task_features,
+                                                               x_support_set_task_features.shape[-1]).squeeze()
+                    x_target_set_task_features = F.avg_pool2d(x_target_set_task_features,
+                                                              x_target_set_task_features.shape[-1]).squeeze()
+                    if self.task_relational_network is not None:
+                        task_embedding = self.task_relational_network.forward(x_img=x_support_set_task_features)
+                    else:
+                        task_embedding = None
                 else:
                     task_embedding = None
-            else:
-                task_embedding = None
-                x_support_set_task_features = None
-                x_target_set_task_features = None
 
-            importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
-            target_set_per_step_loss = []
-            for num_step in range(self.args.num_support_set_steps):
-                support_outputs = self.net_forward(x=x_support_set_task,
-                                                   y=y_support_set_task,
-                                                   weights=names_weights_copy,
-                                                   backup_running_statistics=
-                                                   True if (num_step == 0) else False,
-                                                   training=True, num_step=num_step,
-                                                   return_features=True)
+                for num_step in range(self.num_support_set_steps):
+                    support_outputs = self.net_forward(x=x_support_set_sub_task,
+                                                       y=y_support_set_sub_task,
+                                                       weights=names_weights_copy,
+                                                       backup_running_statistics=
+                                                       True if (num_step == 0) else False,
+                                                       training=True,
+                                                       num_step=step_idx,
+                                                       return_features=True)
 
-                names_weights_copy = self.apply_inner_loop_update(loss=support_outputs['loss'],
-                                                                  names_weights_copy=names_weights_copy,
-                                                                  use_second_order=use_second_order,
-                                                                  current_step_idx=num_step)
+                    names_weights_copy = self.apply_inner_loop_update(loss=support_outputs['loss'],
+                                                                      names_weights_copy=names_weights_copy,
+                                                                      use_second_order=use_second_order,
+                                                                      current_step_idx=step_idx)
+                    step_idx += 1
 
-                # 0, 5 -> 4, 9 ->
+                    if self.use_multi_step_loss_optimization:
+                        target_outputs = self.net_forward(x=x_target_set_task,
+                                                          y=y_target_set_task, weights=names_weights_copy,
+                                                          backup_running_statistics=False, training=True,
+                                                          num_step=step_idx,
+                                                          return_features=True)
+                        target_set_per_step_loss.append(target_outputs['loss'])
+                        step_idx += 1
+
+
+
+            if not self.use_multi_step_loss_optimization:
                 target_outputs = self.net_forward(x=x_target_set_task,
                                                   y=y_target_set_task, weights=names_weights_copy,
                                                   backup_running_statistics=False, training=True,
-                                                  num_step=num_step + num_support_set_steps,
+                                                  num_step=step_idx,
                                                   return_features=True)
-                # print(x_support_set_task.shape, x_target_set_task.shape)
-
-            if self.args.use_multi_step_loss_optimization:
-                target_set_per_step_loss.append(target_outputs['loss'])
-                target_set_per_step_loss = torch.sum(torch.stack(target_set_per_step_loss, dim=0) * importance_weights)
-                target_set_loss = target_set_per_step_loss
-            else:
                 target_set_loss = target_outputs['loss']
+                step_idx += 1
+            else:
 
-            if self.args.save_preds:
-                if saved_logits_list is None:
-                    saved_logits_list = []
+                target_set_loss = torch.sum(
+                    torch.stack(target_set_per_step_loss, dim=0) * importance_weights)
+            # print(target_set_loss, target_set_per_step_loss, importance_weights)
 
-                saved_logits_list.extend(target_outputs['preds'])
+            # if self.save_preds:
+            #     if saved_logits_list is None:
+            #         saved_logits_list = []
+            #
+            #     saved_logits_list.extend(target_outputs['preds'])
 
-            y_support_one_hot = torch.zeros(y_support_set_task.shape[0], self.args.num_classes_per_set).to(
-                self.device)
-            y_support_one_hot.scatter_(1, y_support_set_task.view(-1, 1), 1)
-
-            for num_step in range(self.args.num_target_set_steps):
-                if num_step == 0:
-                    support_set_features = F.avg_pool2d(support_outputs['features'],
-                                                        support_outputs['features'].shape[-1]).squeeze()
-                    pre_updated_target_features = F.avg_pool2d(target_outputs['features'],
-                                                               target_outputs['features'].shape[-1]).squeeze()
-
-                predicted_loss = self.critic_network.forward(support_set_features=x_support_set_task_features,
-                                                             target_set_features=x_target_set_task_features,
-                                                             logits=target_outputs['preds'],
-                                                             support_set_classifier_pre_last_layer=support_set_features,
-                                                             target_set_classifier_pre_last_layer=pre_updated_target_features,
-                                                             support_set_labels=y_support_one_hot,
+            for num_step in range(self.num_target_set_steps):
+                predicted_loss = self.critic_network.forward(logits=target_outputs['preds'],
                                                              task_embedding=task_embedding)
 
                 names_weights_copy = self.apply_inner_loop_update(loss=predicted_loss,
                                                                   names_weights_copy=names_weights_copy,
                                                                   use_second_order=use_second_order,
-                                                                  current_step_idx=num_step)
-            if self.args.num_target_set_steps > 0:
+                                                                  current_step_idx=step_idx)
+                step_idx += 1
+
+            if self.num_target_set_steps > 0:
                 post_update_outputs = self.net_forward(
                     x=x_target_set_task,
                     y=y_target_set_task, weights=names_weights_copy,
                     backup_running_statistics=False, training=True,
-                    num_step=2 * num_support_set_steps,
+                    num_step=step_idx,
                     return_features=True)
-                post_update_loss, post_update_target_preds, post_updated_target_features = post_update_outputs['loss'], \
-                                                                                           post_update_outputs['preds'], \
+                post_update_loss, post_update_target_preds, post_updated_target_features = post_update_outputs[
+                                                                                               'loss'], \
+                                                                                           post_update_outputs[
+                                                                                               'preds'], \
                                                                                            post_update_outputs[
                                                                                                'features']
             else:
@@ -1222,7 +1255,11 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
             post_update_accuracy = torch.eq(post_softmax_target_preds, y_target_set_task).data.cpu().float().mean()
             post_target_loss_update_acc.append(post_update_accuracy)
 
-            loss = target_outputs['loss'] * importance_vector[0] + post_update_loss * importance_vector[1]
+            post_softmax_target_preds = F.softmax(post_update_target_preds, dim=1).argmax(dim=1)
+            post_update_accuracy = torch.eq(post_softmax_target_preds, y_target_set_task).data.cpu().float().mean()
+            post_target_loss_update_acc.append(post_update_accuracy)
+
+            loss = target_outputs['loss']  # * importance_vector[0] + post_update_loss * importance_vector[1]
 
             total_per_step_losses.append(loss)
             total_per_step_accuracies.append(post_update_accuracy)
@@ -1237,9 +1274,6 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         loss_metric_dict['pre_target_loss_update_acc'] = pre_target_loss_update_acc
         loss_metric_dict['post_target_loss_update_loss'] = post_target_loss_update_loss
         loss_metric_dict['post_target_loss_update_acc'] = post_target_loss_update_acc
-
-        if self.args.save_preds:
-            loss_metric_dict['saved_logits'] = torch.cat(saved_logits_list, dim=0)
 
         losses = self.get_across_task_loss_metrics(total_losses=total_per_step_losses,
                                                    total_accuracies=total_per_step_accuracies,
@@ -1283,27 +1317,6 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         if not self.training:
             self.train()
 
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original = data_batch
-
-        if type(self.device) is list:
-            init_device = self.device[0]
-        else:
-            init_device = self.device
-
-        x_support_set_augmented = torch.Tensor(x_support_set_augmented).float().to(device=init_device)
-        x_support_set = torch.Tensor(x_support_set).float().to(device=init_device)
-        x_target_set = torch.Tensor(x_target_set).float().to(device=init_device)
-        x_target_set_augmented = torch.Tensor(x_target_set_augmented).float().to(device=init_device)
-        y_support_set = torch.Tensor(y_support_set).long().to(device=init_device)
-        y_target_set = torch.Tensor(y_target_set).long().to(device=init_device)
-        y_support_set_original = torch.Tensor(y_support_set_original).long().to(device=init_device)
-        y_target_set_original = torch.Tensor(y_target_set_original).long().to(device=init_device)
-
-        data_batch = (
-            x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set,
-            y_support_set_original,
-            y_target_set_original)
-
         losses, per_task_preds = self.train_forward_prop(data_batch=data_batch, epoch=epoch)
         exclude_string = None
 
@@ -1325,27 +1338,6 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         if self.training:
             self.eval()
-
-        if type(self.device) is list:
-            init_device = self.device[0]
-        else:
-            init_device = self.device
-
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original = data_batch
-
-        x_support_set_augmented = torch.Tensor(x_support_set_augmented).float().to(device=init_device)
-        x_support_set = torch.Tensor(x_support_set).float().to(device=init_device)
-        x_target_set = torch.Tensor(x_target_set).float().to(device=init_device)
-        x_target_set_augmented = torch.Tensor(x_target_set_augmented).float().to(device=init_device)
-        y_support_set = torch.Tensor(y_support_set).long().to(device=init_device)
-        y_target_set = torch.Tensor(y_target_set).long().to(device=init_device)
-        y_support_set_original = torch.Tensor(y_support_set_original).long().to(device=init_device)
-        y_target_set_original = torch.Tensor(y_target_set_original).long().to(device=init_device)
-
-        data_batch = (
-            x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set,
-            y_support_set_original,
-            y_target_set_original)
 
         losses, per_task_preds = self.evaluation_forward_prop(data_batch=data_batch, epoch=self.current_epoch)
 
@@ -1381,3 +1373,252 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
                                                                   name)] = learning_rate.detach().cpu().numpy()
 
         return losses
+
+
+def calculate_cosine_distance(support_set_embeddings, support_set_labels, target_set_embeddings):
+    eps = 1e-10
+
+    per_task_similarities = []
+    for support_set_embedding_task, target_set_embedding_task in zip(support_set_embeddings, target_set_embeddings):
+        target_set_embedding_task = target_set_embedding_task  # sb, f
+        support_set_embedding_task = support_set_embedding_task  # num_classes, f
+
+        dot_product = torch.stack(
+            [torch.matmul(target_set_embedding_task, support_vector) for support_vector in support_set_embedding_task],
+            dim=1)
+        cosine_similarity = dot_product
+        cosine_similarity = cosine_similarity.squeeze()
+        per_task_similarities.append(cosine_similarity)
+
+    similarities = torch.stack(per_task_similarities)
+    preds = similarities
+    return preds, similarities
+
+
+class MatchingNetworkFewShotClassifier(nn.Module):
+    def __init__(self, **kwargs):
+        """
+        Initializes a MAML few shot learning system
+        :param im_shape: The images input size, in batch, c, h, w shape
+        :param device: The device to use to use the model on.
+        :param args: A namedtuple of arguments specifying various hyperparameters.
+        """
+        super(MatchingNetworkFewShotClassifier, self).__init__()
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        self.input_shape = (2, self.image_channels, self.image_height, self.image_width)
+        self.current_epoch = -1
+        self.rng = set_torch_seed(seed=self.seed)
+
+        self.classifier = VGGEmbeddingNetwork(im_shape=self.input_shape)
+
+        self.device = torch.device('cpu')
+
+        if torch.cuda.is_available():
+            self.device = torch.cuda.current_device()
+            if torch.cuda.device_count() > 1:
+                self.classifier = nn.DataParallel(self.classifier)
+
+        print("Outer Loop parameters")
+        for name, param in self.trainable_named_parameters(exclude_list=[]):
+            if param.requires_grad:
+                print(name, param.shape)
+
+        self.optimizer = optim.Adam(self.trainable_parameters(exclude_list=[]),
+                                    lr=self.meta_learning_rate,
+                                    weight_decay=self.weight_decay, amsgrad=False)
+
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=self.optimizer, T_max=self.total_epochs,
+                                                              eta_min=self.min_learning_rate)
+        self.to(self.device)
+
+    def forward(self, data_batch, training_phase):
+        """
+        Builds tf graph for Matching Networks, produces losses and summary statistics.
+        :return:
+        """
+
+        data_batch = [item.to(self.device) for item in data_batch]
+
+        x_support_set, x_target_set, y_support_set, y_target_set = data_batch
+
+        x_support_set = x_support_set.view(-1, x_support_set.shape[-3], x_support_set.shape[-2],
+                                           x_support_set.shape[-1])
+        x_target_set = x_target_set.view(-1, x_target_set.shape[-3], x_target_set.shape[-2], x_target_set.shape[-1])
+        y_support_set = y_support_set.view(-1)
+        y_target_set = y_target_set.view(-1)
+
+        output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
+            self.num_classes_per_set * self.num_continual_subtasks_per_task
+
+        y_support_set_one_hot = int_to_one_hot(y_support_set)
+
+        g_encoded_images = []
+
+        h, w, c = x_support_set.shape[-3:]
+
+        x_support_set = x_support_set.view(size=(self.batch_size, -1, h, w, c))
+        x_target_set = x_target_set.view(size=(self.batch_size, -1, h, w, c))
+        y_support_set = y_support_set.view(size=(self.batch_size, -1))
+        y_target_set = y_target_set.view(self.batch_size, -1)
+
+        for x_support_set_task, y_support_set_task in zip(x_support_set,
+                                                          y_support_set):  # produce embeddings for support set images
+
+            support_set_cnn_embed, _ = self.classifier.forward(x=x_support_set_task)  # nsc * nc, h, w, c
+            per_class_embeddings = torch.zeros(
+                (output_units, int(np.prod(support_set_cnn_embed.shape) / (self.num_classes_per_set
+                                                                                    * support_set_cnn_embed.shape[-1])),
+                 support_set_cnn_embed.shape[-1])).to(x_support_set_task.device)
+
+            counter_dict = defaultdict(lambda: 0)
+
+            for x, y in zip(support_set_cnn_embed, y_support_set_task):
+                counter_dict[y % output_units] += 1
+                per_class_embeddings[y % output_units][counter_dict[y % output_units] - 1] = x
+
+            per_class_embeddings = per_class_embeddings.mean(1)
+            g_encoded_images.append(per_class_embeddings)
+
+        f_encoded_image, _ = self.classifier.forward(x=x_target_set.view(-1, h, w, c))
+        f_encoded_image = f_encoded_image.view(self.batch_size, -1, f_encoded_image.shape[-1])
+        g_encoded_images = torch.stack(g_encoded_images, dim=0)
+
+        preds, similarities = calculate_cosine_distance(support_set_embeddings=g_encoded_images,
+                                                        support_set_labels=y_support_set_one_hot.float(),
+                                                        target_set_embeddings=f_encoded_image)
+
+        y_target_set = y_target_set.view(-1)
+        preds = preds.view(-1, preds.shape[-1])
+        loss = F.cross_entropy(input=preds, target=y_target_set)
+
+        softmax_target_preds = F.softmax(preds, dim=1).argmax(dim=1)
+        accuracy = torch.eq(softmax_target_preds, y_target_set).data.cpu().float().mean()
+        losses = dict()
+        losses['loss'] = loss
+        losses['accuracy'] = accuracy
+
+        return losses, preds.view(self.batch_size,
+                                  self.num_continual_subtasks_per_task * self.num_classes_per_set *
+                                  self.num_samples_per_target_class,
+                                  output_units)
+
+    def trainable_parameters(self, exclude_list):
+        """
+        Returns an iterator over the trainable parameters of the model.
+        """
+        for name, param in self.named_parameters():
+            if all([entry not in name for entry in exclude_list]):
+                if param.requires_grad:
+                    yield param
+
+    def trainable_named_parameters(self, exclude_list):
+        """
+        Returns an iterator over the trainable parameters of the model.
+        """
+        for name, param in self.named_parameters():
+            if all([entry not in name for entry in exclude_list]):
+                if param.requires_grad:
+                    yield name, param
+
+    def train_forward_prop(self, data_batch, epoch, current_iter):
+        """
+        Runs an outer loop forward prop using the meta-model and base-model.
+        :param data_batch: A data batch containing the support set and the target set input, output pairs.
+        :param epoch: The index of the currrent epoch.
+        :return: A dictionary of losses for the current step.
+        """
+        losses, per_task_preds = self.forward(data_batch=data_batch, training_phase=True)
+        return losses, per_task_preds.detach().cpu().numpy()
+
+    def evaluation_forward_prop(self, data_batch, epoch):
+        """
+        Runs an outer loop evaluation forward prop using the meta-model and base-model.
+        :param data_batch: A data batch containing the support set and the target set input, output pairs.
+        :param epoch: The index of the currrent epoch.
+        :return: A dictionary of losses for the current step.
+        """
+        losses, per_task_preds = self.forward(data_batch=data_batch, training_phase=False)
+
+        return losses, per_task_preds.detach().cpu().numpy()
+
+    def meta_update(self, loss):
+        """
+        Applies an outer loop update on the meta-parameters of the model.
+        :param loss: The current crossentropy loss.
+        """
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+    def run_train_iter(self, data_batch, epoch, current_iter):
+        """
+        Runs an outer loop update step on the meta-model's parameters.
+        :param data_batch: input data batch containing the support set and target set input, output pairs
+        :param epoch: the index of the current epoch
+        :return: The losses of the ran iteration.
+        """
+        epoch = int(epoch)
+        self.scheduler.step(epoch=epoch)
+        if self.current_epoch != epoch:
+            self.current_epoch = epoch
+            # print(epoch, self.optimizer)
+
+        if not self.training:
+            self.train()
+
+        losses, per_task_preds = self.train_forward_prop(data_batch=data_batch, epoch=epoch, current_iter=current_iter)
+
+        self.meta_update(loss=losses['loss'])
+        losses['learning_rate'] = self.scheduler.get_lr()[0]
+        self.zero_grad()
+
+        return losses, per_task_preds
+
+    def run_validation_iter(self, data_batch):
+        """
+        Runs an outer loop evaluation step on the meta-model's parameters.
+        :param data_batch: input data batch containing the support set and target set input, output pairs
+        :param epoch: the index of the current epoch
+        :return: The losses of the ran iteration.
+        """
+
+        if self.training:
+            self.eval()
+
+        losses, per_task_preds = self.evaluation_forward_prop(data_batch=data_batch, epoch=self.current_epoch)
+
+        return losses, per_task_preds
+
+    def save_model(self, model_save_dir, state):
+        """
+        Save the network parameter state and experiment state dictionary.
+        :param model_save_dir: The directory to store the state at.
+        :param state: The state containing the experiment state and the network. It's in the form of a dictionary
+        object.
+        """
+        state['network'] = self.state_dict()
+        torch.save(state, f=model_save_dir)
+
+    def load_model(self, model_save_dir, model_name, model_idx):
+        """
+        Load checkpoint and return the state dictionary containing the network state params and experiment state.
+        :param model_save_dir: The directory from which to load the files.
+        :param model_name: The model_name to be loaded from the direcotry.
+        :param model_idx: The index of the model (i.e. epoch number or 'latest' for the latest saved model of the current
+        experiment)
+        :return: A dictionary containing the experiment state and the saved model parameters.
+        """
+        filepath = os.path.join(model_save_dir, "{}_{}".format(model_name, model_idx))
+
+        state = torch.load(filepath, map_location='cpu')
+        net = dict(state['network'])
+
+        state['network'] = OrderedDict(net)
+        state_dict_loaded = state['network']
+        self.load_state_dict(state_dict=state_dict_loaded)
+        self.starting_iter = state['current_iter']
+
+        return state

@@ -3,7 +3,7 @@ from copy import copy
 
 local_script_dir = "../experiment_scripts"
 experiment_json_dir = '../experiment_config/'
-maml_experiment_script = 'train_few_shot_system.py'
+maml_experiment_script = 'train_continual_learning_few_shot_system.py'
 prefix = 'few_shot'
 
 if not os.path.exists(local_script_dir):

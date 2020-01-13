@@ -16,7 +16,7 @@ export PATH=${CUDA_HOME}/bin:${PATH}
 export PYTHON_PATH=$PATH
 
 export GPU_ID=$1
-
+export CUDA_VISIBLE_DEVICES=$GPU_ID
 echo $GPU_ID
 
 cd ..

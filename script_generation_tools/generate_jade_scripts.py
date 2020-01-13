@@ -8,18 +8,33 @@ parser = argparse.ArgumentParser(description='Welcome to the MAML++ training and
 parser.add_argument('--cluster_template_script', nargs="?", type=str, default="cluster_template_script", help='Batch_size for experiment')
 args = parser.parse_args()
 experiment_json_dir = '../experiment_config/'
-maml_experiment_script = 'train_few_shot_system.py'
+maml_experiment_script = 'train_continual_learning_few_shot_system.py'
 
 prefix = 'few_shot'
 cluster_scripts = {"single_jade": "jade_cluster_small_template_script", "gpu_cluster": "cluster_template_script", "multi_jade": "jade_cluster_template_script", "remote_machine": "remote_machine_script", "apollo": "apollo_template_script"}
 local_script_dir = "../experiment_scripts"
 cluster_script_dir = "../cluster_experiment_scripts"
 
+for subdir, dir, files in os.walk(local_script_dir):
+    for file in files:
+        if file.endswith('.sh'):
+            filepath = os.path.join(subdir, file)
+            os.remove(filepath)
+
+for subdir, dir, files in os.walk(cluster_script_dir):
+    for file in files:
+        if file.endswith('.sh'):
+            filepath = os.path.join(subdir, file)
+            os.remove(filepath)
+
+
 if not os.path.exists(local_script_dir):
     os.makedirs(local_script_dir)
 
 if not os.path.exists(cluster_script_dir):
     os.makedirs(cluster_script_dir)
+
+
 
 def load_template(filepath):
     with open(filepath, mode='r') as filereader:

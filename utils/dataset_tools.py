@@ -6,6 +6,7 @@ import shutil
 import numpy as np
 import tqdm
 from PIL import Image
+from torchvision import transforms
 
 from utils.gdrive_utils import download_dataset
 
@@ -84,7 +85,10 @@ def check_download_dataset(args):
                 total_files == 100 * 600 and 'mini_imagenet' in datasets[dataset_idx]) or (
                 total_files == 3 and 'mini_imagenet_pkl' in datasets[dataset_idx]) or (
                 total_files == 11788 and "cub" in datasets[dataset_idx]) or (
-                total_files == 779165 and "tiered_imagenet" in datasets[dataset_idx]):
+                total_files == 779165 and "tiered_imagenet" in datasets[dataset_idx]) or (
+                total_files == 92460 and "omniglot_cifar100" in datasets[dataset_idx]) or (
+                total_files == 102460 and "omniglot_fashion_mnist" in datasets[dataset_idx]) or (
+                total_files == 164248 and "mini_imagenet_cub_omniglot_cifar100" in datasets[dataset_idx]):
             print("file count is correct")
             done = True
         else:
@@ -261,10 +265,14 @@ def load_image(image_path):
     :param channels: The number of channels to keep
     :return: An image array of shape (h, w, channels), whose values range between 0.0 and 1.0.
     """
+    try:
+        image = Image.open(image_path)
+        return image
+    except:
+        print(image_path, 'problem')
+        return None
 
-    image = Image.open(image_path)
 
-    return image
 
 
 def load_batch(batch_image_paths):

@@ -77,6 +77,7 @@ def get_stats_from_experiment_name(experiment_name):
     val_loss = np.inf
     train_acc = 0.
     train_loss = np.inf
+    epochs = 0
     experiment_dir = "../{}".format(experiment_name)
     for subdir, dir, files in os.walk(experiment_dir):
         for file in files:
@@ -100,7 +101,7 @@ def get_stats_from_experiment_name(experiment_name):
                 except:
                     pass
 
-    return total_epochs_done, (test_acc, test_loss, val_acc, val_loss, train_acc, train_loss)
+    return epochs, (test_acc, test_loss, val_acc, val_loss, train_acc, train_loss)
 
 
 def load_template(filepath):
@@ -143,8 +144,10 @@ def get_total_epochs_completed(epoch_dict, currently_running_scripts):
         [get_metrics_from_exp_script(key, currently_running_scripts)[0] for key, value in epoch_dict.items()])
     return total_epochs
 
+
 def check_string(string_item, include_list):
     return all([item in string_item for item in include_list])
+
 
 student_id = getpass.getuser().encode()[:5]
 include_list = args.include.split(" ")
@@ -165,13 +168,15 @@ for item in list_of_scripts:
     print("to run", item)
 
 print_progress_page(epoch_dict, currently_running_scripts=list_of_running_scripts)
-
-
-with tqdm.tqdm(total=len(list_of_scripts)) as pbar_experiment:
-    while len(list_of_scripts) > 0 or len(list_of_running_scripts) > 0:
+current_completed_epochs = 0
+target_completed_epochs = len(list_of_scripts) * args.total_epochs_per_job
+with tqdm.tqdm(total=target_completed_epochs) as pbar_experiment:
+    while get_total_epochs_completed(epoch_dict=epoch_dict,
+                                     currently_running_scripts=list_of_scripts) < target_completed_epochs:
         while len(list_of_running_scripts) < num_jobs_in_queue and len(list_of_scripts) > 0:
             current_script = list_of_scripts[0].decode("utf-8")
-            current_epochs = get_metrics_from_exp_script(current_script, currently_running_scripts=list_of_running_scripts)[0]
+            current_epochs = \
+            get_metrics_from_exp_script(current_script, currently_running_scripts=list_of_running_scripts)[0]
             if current_epochs < total_epochs:
 
                 gpu_to_use = []
@@ -181,14 +186,15 @@ with tqdm.tqdm(total=len(list_of_scripts)) as pbar_experiment:
                                                  excludeID=[], excludeUUID=[])
                 gpu_to_use = [i for i in gpu_to_use if i not in list_of_in_use_gpus]
                 if len(gpu_to_use) > 0:
-                    #print("Using GPU with ID", gpu_to_use)
+                    # print("Using GPU with ID", gpu_to_use)
                     script_to_run = list_of_scripts[0].decode("utf-8")
                     gpu_to_use = gpu_to_use[0]
                     out = subprocess.Popen(
                         args=["bash {script_name} {gpu_idx}".format(script_name=script_to_run, gpu_idx=gpu_to_use)],
                         universal_newlines=False,
                         shell=True,
-                        stdout=open("stdout_{}".format(time.time()), mode="w+"), stderr=open("stderr_{}".format(time.time()), mode="w+"))
+                        stdout=open("stdout_{}".format(script_to_run.replace('.sh', 'log')), mode="w+"),
+                        stderr=open("stderr_{}".format(script_to_run.replace('.sh', 'log')), mode="w+"))
 
                     list_of_in_use_gpus.append(gpu_to_use)
                     list_of_running_processes.append(out)
@@ -198,7 +204,8 @@ with tqdm.tqdm(total=len(list_of_scripts)) as pbar_experiment:
 
         print_progress_page(epoch_dict, currently_running_scripts=list_of_running_scripts)
 
-        idx_of_alive_processes = [i for i in range(len(list_of_running_processes)) if list_of_running_processes[i].poll() == None]
+        idx_of_alive_processes = [i for i in range(len(list_of_running_processes)) if
+                                  list_of_running_processes[i].poll() == None]
 
         list_of_running_processes = [list_of_running_processes[i] for i in idx_of_alive_processes]
 
@@ -206,9 +213,16 @@ with tqdm.tqdm(total=len(list_of_scripts)) as pbar_experiment:
 
         list_of_in_use_gpus = [list_of_in_use_gpus[i] for i in idx_of_alive_processes]
 
-        if current_num_processed_scripts != total_num_scripts - len(list_of_scripts):
-            diff = total_num_scripts - len(list_of_scripts) - current_num_processed_scripts
-            pbar_experiment.update(diff)
-            current_num_processed_scripts = total_num_scripts - len(list_of_scripts)
+        if current_completed_epochs != get_total_epochs_completed(epoch_dict=epoch_dict,
+                                                                  currently_running_scripts=list_of_scripts):
+            diff = get_total_epochs_completed(epoch_dict=epoch_dict,
+                                              currently_running_scripts=list_of_scripts) - current_completed_epochs
+            if diff < 0:
+                print('Diff is ', diff)
+            else:
+                pbar_experiment.update(diff)
+                current_num_processed_scripts = total_num_scripts - len(list_of_scripts)
+                current_completed_epochs = get_total_epochs_completed(epoch_dict=epoch_dict,
+                                                  currently_running_scripts=list_of_scripts)
 
         time.sleep(30)

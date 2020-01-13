@@ -1,16 +1,16 @@
 import os
-import sys
 import time
 
 import numpy as np
-import torch
 import tqdm
 
 from utils.storage import build_experiment_folder, save_statistics, save_to_json
 
 
 class ExperimentBuilder(object):
-    def __init__(self, args, data, model, device, use_features_instead_of_images=False):
+    def __init__(self, data_dict, model, experiment_name, continue_from_epoch, max_models_to_save,
+                 total_iter_per_epoch, total_epochs, num_evaluation_tasks, batch_size, evaluate_on_test_set_only,
+                 args):
         """
         Initializes an experiment builder using a named tuple (args), a data provider (data), a meta learning system
         (model) and a device (e.g. gpu/cpu/n)
@@ -19,11 +19,10 @@ class ExperimentBuilder(object):
         :param model: A meta learning system instance
         :param device: Device/s to use for the experiment
         """
-        self.args, self.device = args, device
 
         self.model = model
         self.saved_models_filepath, self.logs_filepath, self.samples_filepath = build_experiment_folder(
-            experiment_name=self.args.experiment_name)
+            experiment_name=experiment_name)
 
         self.total_losses = dict()
         self.state = dict()
@@ -32,45 +31,57 @@ class ExperimentBuilder(object):
         self.state['current_iter'] = 0
         self.state['current_iter'] = 0
         self.start_epoch = 0
-        self.max_models_to_save = self.args.max_models_to_save
+        self.max_models_to_save = max_models_to_save
         self.create_summary_csv = False
+        self.evaluate_on_test_set_only = evaluate_on_test_set_only
 
-        if self.args.continue_from_epoch == 'from_scratch':
+        for key, value in args.__dict__.items():
+            setattr(self, key, value)
+
+        if continue_from_epoch == 'from_scratch':
             self.create_summary_csv = True
 
-        elif self.args.continue_from_epoch == 'latest':
+        elif continue_from_epoch == 'latest':
             checkpoint = os.path.join(self.saved_models_filepath, "train_model_latest")
             print("attempting to find existing checkpoint", )
             if os.path.exists(checkpoint):
-                self.state = \
-                    self.model.load_model(model_save_dir=self.saved_models_filepath, model_name="train_model",
-                                          model_idx='latest')
-                self.start_epoch = int(self.state['current_iter'] / self.args.total_iter_per_epoch)
+                try:
+                    self.state = \
+                        self.model.load_model(model_save_dir=self.saved_models_filepath, model_name="train_model",
+                                              model_idx='latest')
+                    self.start_epoch = int(self.state['current_iter'] / total_iter_per_epoch)
+                except:
+                    self.continue_from_epoch = 'from_scratch'
+                    self.create_summary_csv = True
 
             else:
-                self.args.continue_from_epoch = 'from_scratch'
+                self.continue_from_epoch = 'from_scratch'
                 self.create_summary_csv = True
-        elif int(self.args.continue_from_epoch) >= 0:
-            self.state = \
-                self.model.load_model(model_save_dir=self.saved_models_filepath, model_name="train_model",
-                                      model_idx=self.args.continue_from_epoch)
-            self.start_epoch = int(self.state['current_iter'] / self.args.total_iter_per_epoch)
+        elif int(continue_from_epoch) >= 0:
+            checkpoint = os.path.join(self.saved_models_filepath, "train_model_{}".format(continue_from_epoch))
+            if os.path.exists(checkpoint):
+                self.state = \
+                    self.model.load_model(model_save_dir=self.saved_models_filepath, model_name="train_model",
+                                          model_idx=continue_from_epoch)
+                self.start_epoch = int(self.state['current_iter'] / total_iter_per_epoch)
+            else:
+                self.continue_from_epoch = 'from_scratch'
+                self.create_summary_csv = True
 
-        if use_features_instead_of_images:
-            self.data = data(args=args, model=self.model.data_feature_network.cpu(),
-                             current_iter=self.state['current_iter'])
-        else:
-            self.data = data(args=args, current_iter=self.state['current_iter'])
+        self.data = data_dict
+        self.total_iter_per_epoch = total_iter_per_epoch
+        self.batch_size = batch_size
+        self.total_epochs = total_epochs
+        self.num_evaluation_tasks = num_evaluation_tasks
 
-        print("train_seed {}, val_seed: {}, at start time".format(self.data.dataset.seed["train"],
-                                                                  self.data.dataset.seed["val"]))
-        self.total_epochs_before_pause = self.args.total_epochs_before_pause
-        self.state['best_epoch'] = int(self.state['best_val_iter'] / self.args.total_iter_per_epoch)
-        self.epoch = int(self.state['current_iter'] / self.args.total_iter_per_epoch)
-        self.augment_flag = True if 'omniglot' in self.args.dataset_name.lower() else False
+        print("train_seed {}, val_seed: {}, at start time".format(self.data["train"].dataset.seed,
+                                                                  self.data["val"].dataset.seed))
+
+        self.state['best_epoch'] = int(self.state['best_val_iter'] / total_iter_per_epoch)
+        self.epoch = int(self.state['current_iter'] / total_iter_per_epoch)
         self.start_time = time.time()
         self.epochs_done_in_this_run = 0
-        print(self.state['current_iter'], int(self.args.total_iter_per_epoch * self.args.total_epochs))
+        print(self.state['current_iter'], int(total_iter_per_epoch * total_epochs))
 
     def build_summary_dict(self, total_losses, phase, summary_losses=None):
         """
@@ -88,7 +99,6 @@ class ExperimentBuilder(object):
                 summary_losses["{}_{}_mean".format(phase, key)] = np.mean(total_losses[key])
                 summary_losses["{}_{}_std".format(phase, key)] = np.std(total_losses[key])
 
-
         return summary_losses
 
     def build_loss_summary_string(self, summary_losses):
@@ -99,7 +109,7 @@ class ExperimentBuilder(object):
         """
         output_update = ""
         for key, value in zip(list(summary_losses.keys()), list(summary_losses.values())):
-            if ("loss" in key or "accuracy" in key) and (not "pre" in key and not "post" in key):
+            if ("loss" in key or "accuracy" in key or 'opt' in key) and (not "pre" in key and not "post" in key):
                 value = float(value)
                 output_update += "{}: {:.4f}, ".format(key, value)
 
@@ -122,12 +132,8 @@ class ExperimentBuilder(object):
         :param pbar_train: The progress bar of the training.
         :return: Updates total_losses, train_losses, current_iter
         """
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original, seed = train_sample
-        data_batch = (
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set,
-        y_support_set_original, y_target_set_original)
 
-        losses, _ = self.model.run_train_iter(data_batch=data_batch, epoch=epoch_idx, current_iter=current_iter)
+        losses, _ = self.model.run_train_iter(data_batch=train_sample, epoch=epoch_idx, current_iter=current_iter)
 
         for key, value in zip(list(losses.keys()), list(losses.values())):
             if 'saved_logits' not in key:
@@ -158,13 +164,8 @@ class ExperimentBuilder(object):
         :param pbar_val: The progress bar of the val stage.
         :return: The updated val_losses, total_losses
         """
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original, seed = val_sample
-        data_batch = (
-            x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set,
-            y_support_set_original,
-            y_target_set_original)
 
-        losses, _ = self.model.run_validation_iter(data_batch=data_batch)
+        losses, _ = self.model.run_validation_iter(data_batch=val_sample)
         for key, value in zip(list(losses.keys()), list(losses.values())):
             if key not in total_losses:
                 total_losses[key] = [float(value)]
@@ -188,13 +189,7 @@ class ExperimentBuilder(object):
         :param pbar_test: The progress bar of the val stage.
         :return: The updated val_losses, total_losses
         """
-        x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set, y_support_set_original, y_target_set_original, seed = val_sample
-        data_batch = (
-            x_support_set, x_support_set_augmented, x_target_set, x_target_set_augmented, y_support_set, y_target_set,
-            y_support_set_original,
-            y_target_set_original)
-
-        losses, per_task_preds = self.model.run_validation_iter(data_batch=data_batch)
+        losses, per_task_preds = self.model.run_validation_iter(data_batch=val_sample)
 
         per_model_per_batch_preds[model_idx].extend(list(per_task_preds))
 
@@ -202,10 +197,36 @@ class ExperimentBuilder(object):
 
         pbar_test.update(1)
         pbar_test.set_description(
-            "val_phase {} -> {}: {} - {}".format(self.epoch, val_output_update, torch.min(seed, dim=0),
-                                                 torch.max(seed, dim=0)))
+            "val_phase {} -> {}".format(self.epoch, val_output_update))
 
         return per_model_per_batch_preds
+
+    def convert_into_continual_tasks(self, data_batch):
+
+        x_support_set, x_target_set, y_support_set, y_target_set, y_original = data_batch
+
+        x_support_set = x_support_set.view(self.batch_size, self.num_continual_subtasks_per_task,
+                                           x_support_set.shape[2], x_support_set.shape[3], x_support_set.shape[4],
+                                           x_support_set.shape[5], x_support_set.shape[6])
+
+        x_target_set = x_target_set.view(self.batch_size, self.num_continual_subtasks_per_task,
+                                         x_target_set.shape[2], x_target_set.shape[3], x_target_set.shape[4],
+                                         x_target_set.shape[5], x_target_set.shape[6])
+
+        y_support_set = y_support_set.view(self.batch_size, self.num_continual_subtasks_per_task,
+                                           y_support_set.shape[2], y_support_set.shape[3])
+
+        y_target_set = y_target_set.view(self.batch_size, self.num_continual_subtasks_per_task,
+                                         y_target_set.shape[2], y_target_set.shape[3])
+
+        y_original = y_original.view(self.batch_size, self.num_continual_subtasks_per_task, self.num_classes_per_set)
+
+        if not self.overwrite_classes_in_each_task:
+            for i in range(self.num_continual_subtasks_per_task):
+                y_support_set[:, i] += i * self.num_classes_per_set
+                y_target_set[:, i] += i * self.num_classes_per_set
+
+        return x_support_set, x_target_set, y_support_set, y_target_set
 
     def save_models(self, model, epoch, state):
         """
@@ -295,19 +316,17 @@ class ExperimentBuilder(object):
             else:
                 pass
 
-            with tqdm.tqdm(total=int(self.args.num_evaluation_tasks / self.args.batch_size)) as pbar_test:
+            with tqdm.tqdm(total=int(self.num_evaluation_tasks / self.batch_size)) as pbar_test:
                 for sample_idx, test_sample in enumerate(
-                        self.data.get_test_batches(
-                            total_batches=int(self.args.num_evaluation_tasks / self.args.batch_size),
-                            augment_images=False)):
-
-                    per_model_per_batch_targets[idx].extend(np.array(test_sample[-4]))
+                        self.data['test']):
+                    test_sample = self.convert_into_continual_tasks(test_sample)
+                    x_support_set, x_target_set, y_support_set, y_target_set = test_sample
+                    per_model_per_batch_targets[idx].extend(np.array(y_target_set))
                     per_model_per_batch_preds = self.test_evaluation_iteration(val_sample=test_sample,
                                                                                sample_idx=sample_idx,
                                                                                model_idx=idx,
                                                                                per_model_per_batch_preds=per_model_per_batch_preds,
                                                                                pbar_test=pbar_test)
-
         per_batch_preds = np.mean(per_model_per_batch_preds, axis=0)
 
         per_batch_max = np.argmax(per_batch_preds, axis=2)
@@ -334,35 +353,40 @@ class ExperimentBuilder(object):
         will return the test set evaluation results on the best performing validation model.
         """
         with tqdm.tqdm(initial=self.state['current_iter'],
-                       total=int(self.args.total_iter_per_epoch * self.args.total_epochs)) as pbar_train:
+                       total=int(self.total_iter_per_epoch * self.total_epochs)) as pbar_train:
 
-            while (self.state['current_iter'] < (self.args.total_epochs * self.args.total_iter_per_epoch)) and (
-                    self.args.evaluate_on_test_set_only == False):
+            self.data['train'].dataset.set_current_iter_idx(self.state['current_iter'])
 
-                for train_sample_idx, train_sample in enumerate(
-                        self.data.get_train_batches(total_batches=int(self.args.total_iter_per_epoch *
-                                                                      self.args.total_epochs) - self.state[
-                                                                      'current_iter'],
-                                                    augment_images=self.augment_flag)):
+            while (self.state['current_iter'] < (self.total_epochs * self.total_iter_per_epoch)) and (
+                    self.evaluate_on_test_set_only == False):
+                # print('current_iter', self.state['current_iter'], 'total',
+                #       self.total_epochs * self.total_iter_per_epoch, len(self.data['train']))
 
+                for idx, train_sample in enumerate(self.data['train']):
+                    train_sample = self.convert_into_continual_tasks(train_sample)
                     train_losses, total_losses, self.state['current_iter'] = self.train_iteration(
                         train_sample=train_sample,
                         total_losses=self.total_losses,
                         epoch_idx=(self.state['current_iter'] /
-                                   self.args.total_iter_per_epoch),
+                                   self.total_iter_per_epoch),
                         pbar_train=pbar_train,
                         current_iter=self.state['current_iter'],
                         sample_idx=self.state['current_iter'])
+
+                    # print('current_iter', self.data['train'].dataset.current_iter,
+                    #       self.state['current_iter'], 'total', self.total_epochs * self.total_iter_per_epoch,
+                    #       len(self.data['train']))
+
                     better_val_model = False
-                    if self.state['current_iter'] % self.args.total_iter_per_epoch == 0:
+                    if self.state['current_iter'] % self.total_iter_per_epoch == 0:
 
                         total_losses = dict()
                         val_losses = dict()
-                        with tqdm.tqdm(total=int(self.args.num_evaluation_tasks / self.args.batch_size)) as pbar_val:
-                            for _, val_sample in enumerate(
-                                    self.data.get_val_batches(
-                                        total_batches=int(self.args.num_evaluation_tasks / self.args.batch_size),
-                                        augment_images=False)):
+                        with tqdm.tqdm(total=int(self.num_evaluation_tasks / self.batch_size)) as pbar_val:
+                            for val_sample_idx, val_sample in enumerate(
+                                    self.data['val']):
+                                # if val_sample_idx == 1:
+                                val_sample = self.convert_into_continual_tasks(val_sample)
                                 val_losses, total_losses = self.evaluation_iteration(val_sample=val_sample,
                                                                                      total_losses=total_losses,
                                                                                      pbar_val=pbar_val, phase='val')
@@ -372,30 +396,27 @@ class ExperimentBuilder(object):
                                 self.state['best_val_acc'] = val_losses["val_accuracy_mean"]
                                 self.state['best_val_iter'] = self.state['current_iter']
                                 self.state['best_epoch'] = int(
-                                    self.state['best_val_iter'] / self.args.total_iter_per_epoch)
+                                    self.state['best_val_iter'] / self.total_iter_per_epoch)
 
                         self.epoch += 1
                         self.state = self.merge_two_dicts(first_dict=self.merge_two_dicts(first_dict=self.state,
                                                                                           second_dict=train_losses),
                                                           second_dict=val_losses)
 
-                        self.save_models(model=self.model, epoch=self.epoch, state=self.state)
+
 
                         self.start_time, self.state = self.pack_and_save_metrics(start_time=self.start_time,
                                                                                  create_summary_csv=self.create_summary_csv,
                                                                                  train_losses=train_losses,
                                                                                  val_losses=val_losses,
                                                                                  state=self.state)
+                        self.save_models(model=self.model, epoch=self.epoch, state=self.state)
 
                         self.total_losses = dict()
 
                         self.epochs_done_in_this_run += 1
-
+                        print(self.state['per_epoch_statistics']['val_accuracy_mean'])
                         save_to_json(filename=os.path.join(self.logs_filepath, "summary_statistics.json"),
                                      dict_to_store=self.state['per_epoch_statistics'])
 
-                        if self.epochs_done_in_this_run >= self.total_epochs_before_pause:
-                            print("train_seed {}, val_seed: {}, at pause time".format(self.data.dataset.seed["train"],
-                                                                                      self.data.dataset.seed["val"]))
-                            sys.exit()
             self.evaluate_test_set_using_the_best_models(top_n_models=5)
