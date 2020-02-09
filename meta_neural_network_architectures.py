@@ -427,6 +427,7 @@ class MetaConvNormLayerLeakyReLU(nn.Module):
         if self.normalization:
             self.norm_layer.restore_backup_stats()
 
+
 class VGGActivationNormNetwork(nn.Module):
     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
                  num_stages, num_filters, num_support_set_steps, num_target_set_steps):
@@ -464,7 +465,6 @@ class VGGActivationNormNetwork(nn.Module):
         self.layer_dict = nn.ModuleDict()
 
         for i in range(self.num_stages):
-
             self.layer_dict['conv_{}'.format(i)] = MetaConvNormLayerLeakyReLU(input_shape=out.shape,
                                                                               num_filters=self.num_filters,
                                                                               kernel_size=3, stride=1,
@@ -480,10 +480,18 @@ class VGGActivationNormNetwork(nn.Module):
 
         out = out.view((out.shape[0], -1))
 
-        self.layer_dict['linear'] = MetaLinearLayer(input_shape=out.shape,
-                                                    num_filters=self.num_output_classes, use_bias=True)
+        if type(self.num_output_classes) == list:
+            for idx, num_output_classes in enumerate(self.num_output_classes):
+                self.layer_dict['linear_{}'.format(idx)] = MetaLinearLayer(input_shape=out.shape,
+                                                                           num_filters=num_output_classes,
+                                                                           use_bias=True)
 
-        out = self.layer_dict['linear'](out)
+                pred = self.layer_dict['linear_{}'.format(idx)](out)
+        else:
+            self.layer_dict['linear'] = MetaLinearLayer(input_shape=out.shape,
+                                                        num_filters=self.num_output_classes, use_bias=True)
+
+            out = self.layer_dict['linear'](out)
         print("VGGNetwork build", out.shape)
 
     def forward(self, x, num_step, dropout_training=None, params=None, training=False,
@@ -517,19 +525,25 @@ class VGGActivationNormNetwork(nn.Module):
         # print([key for key, value in param_dict.items() if value is not None])
 
         for i in range(self.num_stages):
-
-
             out = self.layer_dict['conv_{}'.format(i)](out, params=param_dict['conv_{}'.format(i)], training=training,
                                                        backup_running_statistics=backup_running_statistics,
                                                        num_step=num_step)
 
             out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
 
-
         features = out
 
         out = out.view(out.size(0), -1)
-        out = self.layer_dict['linear'](out, param_dict['linear'])
+
+        if type(self.num_output_classes) == list:
+            pred_list = []
+            for idx, num_output_classes in enumerate(self.num_output_classes):
+                cur_pred = self.layer_dict['linear_{}'.format(idx)](out, params=param_dict['linear_{}'.format(idx)])
+                pred_list.append(cur_pred)
+            out = pred_list
+        else:
+
+            out = self.layer_dict['linear'](out, params=param_dict['linear'])
 
         if return_features:
             return out, features
@@ -560,6 +574,7 @@ class VGGActivationNormNetwork(nn.Module):
                             print(param.grad)
                             param.grad.zero_()
                             params[name].grad = None
+
 
 # class VGGActivationNormNetworkWithAttention(nn.Module):
 #     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
@@ -1552,161 +1567,6 @@ class SqueezeExciteLayer(nn.ModuleDict):
         return out
 
 
-# class VGGActivationNormNetworkWithAttention(nn.Module):
-#     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
-#                  num_stages, num_filters, num_support_set_steps, num_target_set_steps, num_blocks_per_stage):
-#         """
-#         Builds a multilayer convolutional network. It also provides functionality for passing external parameters to be
-#         used at inference time. Enables inner loop optimization readily.
-#         :param im_shape: The input image batch shape.
-#         :param num_output_classes: The number of output classes of the network.
-#         :param args: A named tuple containing the system's hyperparameters.
-#         :param device: The device to run this on.
-#         :param meta_classifier: A flag indicating whether the system's meta-learning (inner-loop) functionalities should
-#         be enabled.
-#         """
-#         super(VGGActivationNormNetworkWithAttention, self).__init__()
-#
-#         self.total_layers = 0
-#         self.upscale_shapes = []
-#         self.num_filters = num_filters
-#         self.num_stages = num_stages
-#         self.input_shape = input_shape
-#         self.use_channel_wise_attention = use_channel_wise_attention
-#         self.num_output_classes = num_output_classes
-#         self.num_support_set_steps = num_support_set_steps
-#         self.num_target_set_steps = num_target_set_steps
-#         self.build_network()
-#
-#     def build_network(self):
-#         """
-#         Builds the network before inference is required by creating some dummy inputs with the same input as the
-#         self.im_shape tuple. Then passes that through the network and dynamically computes input shapes and
-#         sets output shapes for each layer.
-#         """
-#         x = torch.zeros(self.input_shape)
-#         out = x
-#         self.layer_dict = nn.ModuleDict()
-#
-#         for i in range(self.num_stages):
-#
-#             if self.use_channel_wise_attention:
-#                 self.layer_dict['attention_layer_{}'.format(i)] = SqueezeExciteLayer(input_shape=out.shape,
-#                                                                                      num_filters=32,
-#                                                                                      num_layers=2)
-#                 out = self.layer_dict['attention_layer_{}'.format(i)].forward(out)
-#
-#             self.layer_dict['conv_{}'.format(i)] = MetaConvNormLayerLeakyReLU(input_shape=out.shape,
-#                                                                               num_filters=self.num_filters,
-#                                                                               kernel_size=3, stride=1,
-#                                                                               padding=1,
-#                                                                               use_bias=True,
-#                                                                               groups=1, per_step_bn_statistics=True,
-#                                                                               num_support_set_steps=self.num_support_set_steps,
-#                                                                               num_target_set_steps=self.num_target_set_steps)
-#
-#             out = self.layer_dict['conv_{}'.format(i)](out, training=True, num_step=0)
-#
-#             out = F.avg_pool2d(input=out, kernel_size=2)
-#
-#         if self.use_channel_wise_attention:
-#             self.layer_dict['attention_pre_logit_layer'] = SqueezeExciteLayer(input_shape=out.shape,
-#                                                                               num_filters=32,
-#                                                                               num_layers=2)
-#             out = self.layer_dict['attention_pre_logit_layer'].forward(out)
-#
-#         out = F.avg_pool2d(out, out.shape[-1])
-#         out = out.view((out.shape[0], -1))
-#
-#         self.layer_dict['linear'] = MetaLinearLayer(input_shape=(out.shape[0], np.prod(out.shape[1:])),
-#                                                     num_filters=self.num_output_classes, use_bias=True)
-#
-#         out = self.layer_dict['linear'](out)
-#         print("VGGNetwork build", out.shape)
-#
-#     def forward(self, x, num_step, dropout_training=None, params=None, training=False,
-#                 backup_running_statistics=False, return_features=False):
-#         """
-#         Forward propages through the network. If any params are passed then they are used instead of stored params.
-#         :param x: Input image batch.
-#         :param num_step: The current inner loop step number
-#         :param params: If params are None then internal parameters are used. If params are a dictionary with keys the
-#          same as the layer names then they will be used instead.
-#         :param training: Whether this is training (True) or eval time.
-#         :param backup_running_statistics: Whether to backup the running statistics in their backup store. Which is
-#         then used to reset the stats back to a previous state (usually after an eval loop, when we want to throw away stored statistics)
-#         :return: Logits of shape b, num_output_classes.
-#         """
-#         param_dict = dict()
-#
-#         if params is not None:
-#             params = {key: value[0] for key, value in params.items()}
-#             # print([key for key, value in param_dict.items()])
-#             param_dict = extract_top_level_dict(current_dict=params)
-#
-#         for name, param in list(self.layer_dict.named_parameters()) + list(self.layer_dict.items()):
-#             path_bits = name.split(".")
-#             layer_name = path_bits[0]
-#             if layer_name not in param_dict:
-#                 param_dict[layer_name] = None
-#
-#         out = x
-#
-#         # print([key for key, value in param_dict.items() if value is not None])
-#
-#         for i in range(self.num_stages):
-#
-#             if self.use_channel_wise_attention:
-#                 out = self.layer_dict['attention_layer_{}'.format(i)].forward(out, params=param_dict[
-#                     'attention_layer_{}'.format(i)])
-#
-#             out = self.layer_dict['conv_{}'.format(i)](out, params=param_dict['conv_{}'.format(i)], training=training,
-#                                                        backup_running_statistics=backup_running_statistics,
-#                                                        num_step=num_step)
-#
-#             out = F.avg_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
-#
-#         if self.use_channel_wise_attention:
-#             out = self.layer_dict['attention_pre_logit_layer'].forward(out, params=param_dict[
-#                 'attention_pre_logit_layer'])
-#
-#         features = out
-#         out = F.avg_pool2d(out, out.shape[-1])
-#
-#         out = out.view(out.size(0), -1)
-#         out = self.layer_dict['linear'](out, param_dict['linear'])
-#
-#         if return_features:
-#             return out, features
-#         else:
-#             return out
-#
-#     def restore_backup_stats(self):
-#         """
-#         Reset stored batch statistics from the stored backup.
-#         """
-#         for name, module in self.named_modules():
-#             if type(module) == MetaBatchNormLayer:
-#                 module.restore_backup_stats()
-#
-#     def zero_grad(self, params=None):
-#         if params is None:
-#             for param in self.parameters():
-#                 if param.requires_grad == True:
-#                     if param.grad is not None:
-#                         if torch.sum(param.grad) > 0:
-#                             print(param.grad)
-#                             param.grad.zero_()
-#         else:
-#             for name, param in params.items():
-#                 if param.requires_grad == True:
-#                     if param.grad is not None:
-#                         if torch.sum(param.grad) > 0:
-#                             print(param.grad)
-#                             param.grad.zero_()
-#                             params[name].grad = None
-
-
 class DenseNetActivationNormNetworkWithAttention(nn.Module):
     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
                  num_stages, num_filters, num_blocks_per_stage, num_support_set_steps, num_target_set_steps):
@@ -1918,6 +1778,7 @@ class DenseNetActivationNormNetworkWithAttention(nn.Module):
                             param.grad.zero_()
                             params[name].grad = None
 
+
 class VGGActivationNormNetworkWithAttention(nn.Module):
     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
                  num_stages, num_filters, num_support_set_steps, num_target_set_steps, num_blocks_per_stage):
@@ -1966,7 +1827,6 @@ class VGGActivationNormNetworkWithAttention(nn.Module):
                                                                                                num_target_set_steps=self.num_target_set_steps)
                     out = self.layer_dict['attention_layer_{}_{}'.format(i, j)].forward(out)
 
-
                 self.layer_dict['conv_{}_{}'.format(i, j)] = MetaConvNormLayerLeakyReLU(input_shape=out.shape,
                                                                                         num_filters=self.num_filters,
                                                                                         kernel_size=3, stride=1,
@@ -1979,9 +1839,7 @@ class VGGActivationNormNetworkWithAttention(nn.Module):
 
                 out = self.layer_dict['conv_{}_{}'.format(i, j)](out, training=True, num_step=0)
 
-
             out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
-
 
         if self.use_channel_wise_attention:
             self.layer_dict['attention_pre_logit_layer'] = SqueezeExciteLayer(input_shape=out.shape,
@@ -1992,11 +1850,7 @@ class VGGActivationNormNetworkWithAttention(nn.Module):
             out = self.layer_dict['attention_pre_logit_layer'].forward(out)
 
         features_avg = F.avg_pool2d(out, out.shape[-1]).squeeze()
-        # self.layer_dict['relational_pool'] = MetaBatchRelationalModule(input_shape=out.shape, use_coordinates=True,
-        #                                                                num_target_set_steps=self.num_target_set_steps,
-        #                                                                num_support_set_steps=self.num_support_set_steps,
-        #                                                                output_units=out.shape[1])
-        # out = self.layer_dict['relational_pool'].forward(out, num_step=0)
+
         out = features_avg
 
         self.layer_dict['linear'] = MetaLinearLayer(input_shape=out.shape,
@@ -2047,7 +1901,6 @@ class VGGActivationNormNetworkWithAttention(nn.Module):
                 out = self.layer_dict['conv_{}_{}'.format(i, j)](out, training=True, num_step=num_step,
                                                                  params=param_dict['conv_{}_{}'.format(i, j)])
 
-
             out = F.max_pool2d(input=out, kernel_size=(2, 2), stride=2, padding=0)
 
         if self.use_channel_wise_attention:
@@ -2093,6 +1946,7 @@ class VGGActivationNormNetworkWithAttention(nn.Module):
                             print(param.grad)
                             param.grad.zero_()
                             params[name].grad = None
+
 
 class ResNetActivationNormNetworkWithAttention(nn.Module):
     def __init__(self, input_shape, num_output_classes, use_channel_wise_attention,
@@ -2427,7 +2281,6 @@ class MetaBatchRelationalModule(nn.Module):
             b, c, h, w = out_img.shape
             out_img = out_img.view(b, c, h * w)
 
-
         out_img = out_img.permute([0, 2, 1])  # h*w, c
         b, length, c = out_img.shape
 
@@ -2468,13 +2321,3 @@ class MetaBatchRelationalModule(nn.Module):
         out = self.layer_dict['output_layer'].forward(out, params=param_dict['output_layer'])
         out = self.layer_dict['LeakyReLU_output'].forward(out)
         return out
-
-# test_input = torch.zeros((32, 3, 32, 32))
-# # module = BatchRelationalModule(input_shape=test_input.shape, use_coordinates=True, num_support_set_steps=1,
-# #                                num_target_set_steps=1)
-# module = DenseNetActivationNormNetworkWithAttention(input_shape=test_input.shape, num_output_classes=1000,
-#                                                     use_channel_wise_attention=True, num_stages=3, num_filters=32,
-#                                                     num_blocks_per_stage=1, num_support_set_steps=1,
-#                                                     num_target_set_steps=1)
-# out = module.forward(test_input, num_step=0, params={key: value.unsqueeze(0) for key, value in module.named_parameters()})
-# print(out.shape)

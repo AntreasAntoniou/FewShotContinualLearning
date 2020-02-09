@@ -16,6 +16,10 @@ if args.classifier_type == 'densenet-embedding-based':
     model = EmbeddingMAMLFewShotClassifier(**args.__dict__)
 elif args.classifier_type == 'vgg-based':
     model = VGGMAMLFewShotClassifier(**args.__dict__)
+elif args.classifier_type == 'vgg-fine-tune-scratch':
+    model = FineTuneFromScratchFewShotClassifier(**args.__dict__)
+elif args.classifier_type == 'vgg-fine-tune-pretrained':
+    model = FineTuneFromPretrainedFewShotClassifier(**args.__dict__)
 elif args.classifier_type == 'vgg-matching_network':
     model = MatchingNetworkFewShotClassifier(**args.__dict__)
 else:

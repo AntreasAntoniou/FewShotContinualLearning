@@ -203,7 +203,7 @@ class ExperimentBuilder(object):
 
     def convert_into_continual_tasks(self, data_batch):
 
-        x_support_set, x_target_set, y_support_set, y_target_set, y_original = data_batch
+        x_support_set, x_target_set, y_support_set, y_target_set, x, y = data_batch
 
         x_support_set = x_support_set.view(self.batch_size, self.num_continual_subtasks_per_task,
                                            x_support_set.shape[2], x_support_set.shape[3], x_support_set.shape[4],
@@ -219,14 +219,14 @@ class ExperimentBuilder(object):
         y_target_set = y_target_set.view(self.batch_size, self.num_continual_subtasks_per_task,
                                          y_target_set.shape[2], y_target_set.shape[3])
 
-        y_original = y_original.view(self.batch_size, self.num_continual_subtasks_per_task, self.num_classes_per_set)
+        # y_original = y.view(self.batch_size, self.num_continual_subtasks_per_task, self.num_classes_per_set)
 
         if not self.overwrite_classes_in_each_task:
             for i in range(self.num_continual_subtasks_per_task):
                 y_support_set[:, i] += i * self.num_classes_per_set
                 y_target_set[:, i] += i * self.num_classes_per_set
 
-        return x_support_set, x_target_set, y_support_set, y_target_set
+        return x_support_set, x_target_set, y_support_set, y_target_set,  x, y
 
     def save_models(self, model, epoch, state):
         """
@@ -320,7 +320,7 @@ class ExperimentBuilder(object):
                 for sample_idx, test_sample in enumerate(
                         self.data['test']):
                     test_sample = self.convert_into_continual_tasks(test_sample)
-                    x_support_set, x_target_set, y_support_set, y_target_set = test_sample
+                    x_support_set, x_target_set, y_support_set, y_target_set, x, y = test_sample
                     per_model_per_batch_targets[idx].extend(np.array(y_target_set))
                     per_model_per_batch_preds = self.test_evaluation_iteration(val_sample=test_sample,
                                                                                sample_idx=sample_idx,
@@ -415,7 +415,7 @@ class ExperimentBuilder(object):
                         self.total_losses = dict()
 
                         self.epochs_done_in_this_run += 1
-                        print(self.state['per_epoch_statistics']['val_accuracy_mean'])
+                        # print(self.state['per_epoch_statistics']['val_accuracy_mean'])
                         save_to_json(filename=os.path.join(self.logs_filepath, "summary_statistics.json"),
                                      dict_to_store=self.state['per_epoch_statistics'])
 

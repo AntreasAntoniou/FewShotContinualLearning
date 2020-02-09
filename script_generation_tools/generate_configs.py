@@ -35,12 +35,17 @@ configs_list = []
 
 for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)]:
     for use_channel_wise_attention in [True, False]:
-        for classifier_type in ['vgg-based', 'densenet-embedding-based', 'vgg-matching_network']:
+        for classifier_type in ['vgg-based', 'vgg-fine-tune-scratch', 'vgg-fine-tune-pretrained',
+                                'densenet-embedding-based', 'vgg-matching_network']:
             for (num_continual_subtasks_per_task, same_class_interval, overwrite_classes_in_each_task) in \
-                                                            [(1, 1, False), (3, 1, True), (3, 1, False), (5, 1, True),
-                                                             (5, 1, False), (10, 1, True), (10, 1, False),
-                                                                           (3, 3, True), (5, 5, True), (10, 10, True),
-                                                             (4, 2, False), (8, 2, False)]:
+                    [(1, 1, False), (3, 1, True), (3, 1, False), (5, 1, True),
+                     (5, 1, False), (10, 1, True), (10, 1, False),
+                     (3, 3, True), (5, 5, True), (10, 10, True),
+                     (4, 2, False), (8, 2, False)]:
+                if classifier_type == 'vgg-fine-tune-scratch':
+                    total_epochs = 5
+                else:
+                    total_epochs = 250
                 if not 'vgg-matching_network' in classifier_type:
                     for output_dim in [5, 20]:
                         configs_list.append(
@@ -52,7 +57,7 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                    conv_padding=1, num_filters=48, load_into_memory=False,
                                    conditional_information=[],
                                    num_target_set_steps=0, weight_decay=0.0001,
-                                   total_epochs=250,
+                                   total_epochs=total_epochs,
                                    exclude_param_string=string_generator(
                                        ["None"]),
                                    experiment_name='standard_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
@@ -80,12 +85,13 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                        conv_padding=1, num_filters=48, load_into_memory=False,
                                        conditional_information=string_generator(conditional_information),
                                        num_target_set_steps=1, weight_decay=0.0001,
-                                       total_epochs=250,
+                                       total_epochs=total_epochs,
                                        exclude_param_string=string_generator(
                                            ["None"]),
                                        experiment_name='intrinsic_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
                                            n_way, k_shot, classifier_type, "_".join(conditional_information),
-                                           overwrite_classes_in_each_task, num_continual_subtasks_per_task, same_class_interval),
+                                           overwrite_classes_in_each_task, num_continual_subtasks_per_task,
+                                           same_class_interval),
                                        learnable_bn_beta=True,
                                        learnable_bn_gamma=True,
                                        num_stages=4, num_blocks_per_stage=0,
@@ -108,7 +114,7 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                conv_padding=1, num_filters=48, load_into_memory=False,
                                conditional_information=[],
                                num_target_set_steps=0, weight_decay=0.0001,
-                               total_epochs=250,
+                               total_epochs=total_epochs,
                                exclude_param_string=string_generator(
                                    ["None"]),
                                experiment_name='standard_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(

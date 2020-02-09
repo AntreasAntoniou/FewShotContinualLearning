@@ -8,8 +8,15 @@ from PIL import ImageFile
 from torch.utils.data import Dataset
 
 from utils.dataset_tools import get_label_set, load_dataset, load_image
+import re
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+non_decimal = re.compile(r'[^\d.]+')
+
+
+def remove_non_numerical_chars(input_text):
+    input_text = str(input_text)
+    return ''.join(i for i in input_text if i.isdigit())
 
 
 def augment_image(image, transforms):
@@ -119,6 +126,9 @@ class FewShotLearningDatasetParallel(Dataset):
         class_to_episode_label = {selected_class: episode_label for (selected_class, episode_label) in
                                   zip(selected_classes, episode_labels)}
 
+        episode_label_to_orig_class = {episode_label: selected_class for (selected_class, episode_label) in
+                                       zip(selected_classes, episode_labels)}
+
         set_paths = [self.dataset[class_idx][sample_idx] for
                      class_idx in selected_classes for sample_idx in
                      rng.choice(len(self.dataset[class_idx]),
@@ -156,8 +166,14 @@ class FewShotLearningDatasetParallel(Dataset):
         x_target_set = x[:, :, self.num_samples_per_support_class:]
         y_target_set = y[:, :, self.num_samples_per_support_class:]
 
-        return x_support_set, x_target_set, y_support_set, y_target_set, torch.Tensor(
-            [int(item) for item in selected_classes])
+        x = x.view(-1, x.shape[-3], x.shape[-2],
+                   x.shape[-1])
+
+        y = y.reshape(-1)
+
+        y = torch.Tensor([int(remove_non_numerical_chars(episode_label_to_orig_class[item])) for item in y])
+
+        return x_support_set, x_target_set, y_support_set, y_target_set, x, y
 
     def set_current_iter_idx(self, idx):
         self.seed = self.seed + (idx * self.num_continual_subtasks_per_task)
@@ -180,4 +196,3 @@ def load_preprocess_image(file_path_transform):
     preprocessed_image = augment_image(loaded_image, transforms=transform).numpy()
 
     return preprocessed_image
-

@@ -88,7 +88,8 @@ def check_download_dataset(args):
                 total_files == 779165 and "tiered_imagenet" in datasets[dataset_idx]) or (
                 total_files == 92460 and "omniglot_cifar100" in datasets[dataset_idx]) or (
                 total_files == 102460 and "omniglot_fashion_mnist" in datasets[dataset_idx]) or (
-                total_files == 164248 and "mini_imagenet_cub_omniglot_cifar100" in datasets[dataset_idx]):
+                total_files == 164248 and "mini_imagenet_cub_omniglot_cifar100" in datasets[dataset_idx]) or (
+                total_files == 201000 and "bold_imagenet" in datasets[dataset_idx]):
             print("file count is correct")
             done = True
         else:
