@@ -4,13 +4,16 @@ from collections import namedtuple
 
 seed_list = [0, 1, 2]  # 3, 4]
 
-config = namedtuple('config', 'dataset_name num_classes_per_set '
+config = namedtuple('config', 'num_classes_per_set '
                               ' exclude_param_string weight_decay num_target_set_steps '
                               'batch_size inner_loop_optimizer_type conditional_information '
-                              'train_update_steps same_class_interval '
+                              'train_update_steps '
                               'val_update_steps total_epochs output_spatial_dimensionality use_channel_wise_attention '
-                              'inner_loop_learning_rate experiment_name num_filters conv_padding load_into_memory learnable_bn_gamma learnable_bn_beta num_stages num_blocks_per_stage learnable_learning_rates learnable_betas '
-                              'classifier_type num_samples_per_support_class num_samples_per_target_class num_continual_subtasks_per_task overwrite_classes_in_each_task ')
+                              'inner_loop_learning_rate experiment_name num_filters conv_padding load_into_memory '
+                              'learnable_bn_gamma learnable_bn_beta num_stages num_blocks_per_stage '
+                              'learnable_learning_rates learnable_betas '
+                              'classifier_type num_samples_per_support_class num_samples_per_target_class '
+                              'num_support_sets overwrite_classes_in_each_task class_change_interval ')
 
 
 def string_generator(string_list):
@@ -28,16 +31,15 @@ def string_generator(string_list):
     return output_string
 
 
-experiment_conditional_information_config = [["preds"],
-                                             ["task_embedding", "preds"]]
+experiment_conditional_information_config = [["preds"]]
 # "task_embedding", "penultimate_layer_features"]
 configs_list = []
 
-for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)]:
+for (n_way, k_shot, batch_size) in [(5, 1, 1)]:
     for use_channel_wise_attention in [True, False]:
-        for classifier_type in ['vgg-based', 'vgg-fine-tune-scratch', 'vgg-fine-tune-pretrained',
-                                'densenet-embedding-based', 'vgg-matching_network']:
-            for (num_continual_subtasks_per_task, same_class_interval, overwrite_classes_in_each_task) in \
+        for classifier_type in ['maml++_low-end', 'vgg-fine-tune-scratch', 'vgg-fine-tune-pretrained',
+                                'maml++_high-end', 'vgg-matching_network']:
+            for (num_support_sets, class_change_interval, overwrite_classes_in_each_task) in \
                     [(1, 1, False), (3, 1, True), (3, 1, False), (5, 1, True),
                      (5, 1, False), (10, 1, True), (10, 1, False),
                      (3, 3, True), (5, 5, True), (10, 10, True),
@@ -49,7 +51,7 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                 if not 'vgg-matching_network' in classifier_type:
                     for output_dim in [5, 20]:
                         configs_list.append(
-                            config(dataset_name="mini_imagenet", num_classes_per_set=5,
+                            config(num_classes_per_set=5,
                                    num_samples_per_support_class=k_shot,
                                    num_samples_per_target_class=5,
                                    batch_size=batch_size, train_update_steps=5, val_update_steps=0,
@@ -60,10 +62,10 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                    total_epochs=total_epochs,
                                    exclude_param_string=string_generator(
                                        ["None"]),
-                                   experiment_name='standard_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
+                                   experiment_name='default_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
                                        n_way, k_shot, classifier_type, "_".join([], ),
                                        overwrite_classes_in_each_task,
-                                       num_continual_subtasks_per_task, same_class_interval), learnable_bn_beta=True,
+                                       num_support_sets, class_change_interval), learnable_bn_beta=True,
                                    learnable_bn_gamma=True,
                                    num_stages=4, num_blocks_per_stage=0,
                                    inner_loop_optimizer_type='LSLR', learnable_betas=False,
@@ -71,13 +73,13 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                    output_spatial_dimensionality=output_dim,
                                    use_channel_wise_attention=use_channel_wise_attention,
                                    classifier_type=classifier_type,
-                                   num_continual_subtasks_per_task=num_continual_subtasks_per_task,
+                                   num_support_sets=num_support_sets,
                                    overwrite_classes_in_each_task=overwrite_classes_in_each_task,
-                                   same_class_interval=same_class_interval))
+                                   class_change_interval=class_change_interval))
 
                         for conditional_information in experiment_conditional_information_config:
                             configs_list.append(
-                                config(dataset_name="mini_imagenet", num_classes_per_set=5,
+                                config(num_classes_per_set=5,
                                        num_samples_per_support_class=k_shot,
                                        num_samples_per_target_class=5,
                                        batch_size=batch_size, train_update_steps=5, val_update_steps=1,
@@ -88,10 +90,10 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                        total_epochs=total_epochs,
                                        exclude_param_string=string_generator(
                                            ["None"]),
-                                       experiment_name='intrinsic_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
+                                       experiment_name='SCA_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
                                            n_way, k_shot, classifier_type, "_".join(conditional_information),
-                                           overwrite_classes_in_each_task, num_continual_subtasks_per_task,
-                                           same_class_interval),
+                                           overwrite_classes_in_each_task, num_support_sets,
+                                           class_change_interval),
                                        learnable_bn_beta=True,
                                        learnable_bn_gamma=True,
                                        num_stages=4, num_blocks_per_stage=0,
@@ -100,13 +102,13 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                        output_spatial_dimensionality=output_dim,
                                        use_channel_wise_attention=use_channel_wise_attention,
                                        classifier_type=classifier_type,
-                                       num_continual_subtasks_per_task=num_continual_subtasks_per_task,
+                                       num_support_sets=num_support_sets,
                                        overwrite_classes_in_each_task=overwrite_classes_in_each_task,
-                                       same_class_interval=same_class_interval))
+                                       class_change_interval=class_change_interval))
 
                 else:
                     configs_list.append(
-                        config(dataset_name="mini_imagenet", num_classes_per_set=5,
+                        config(num_classes_per_set=5,
                                num_samples_per_support_class=k_shot,
                                num_samples_per_target_class=5,
                                batch_size=batch_size, train_update_steps=5, val_update_steps=0,
@@ -117,9 +119,9 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                total_epochs=total_epochs,
                                exclude_param_string=string_generator(
                                    ["None"]),
-                               experiment_name='standard_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
+                               experiment_name='default_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
                                    n_way, k_shot, classifier_type, "_".join([], ), overwrite_classes_in_each_task,
-                                   num_continual_subtasks_per_task, same_class_interval), learnable_bn_beta=True,
+                                   num_support_sets, class_change_interval), learnable_bn_beta=True,
                                learnable_bn_gamma=True,
                                num_stages=4, num_blocks_per_stage=0,
                                inner_loop_optimizer_type='LSLR', learnable_betas=False,
@@ -127,9 +129,9 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1), (5, 5, 1), (20, 1, 1), (20, 5, 1)
                                output_spatial_dimensionality=1,
                                use_channel_wise_attention=use_channel_wise_attention,
                                classifier_type=classifier_type,
-                               num_continual_subtasks_per_task=num_continual_subtasks_per_task,
+                               num_support_sets=num_support_sets,
                                overwrite_classes_in_each_task=overwrite_classes_in_each_task,
-                               same_class_interval=same_class_interval))
+                               class_change_interval=class_change_interval))
 
 experiment_templates_json_dir = '../experiment_template_config/'
 experiment_config_target_json_dir = '../experiment_config/'

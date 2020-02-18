@@ -8,8 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import _calculate_fan_in_and_fan_out
 
-import batch_layers as B
-
 
 def extract_top_level_dict(current_dict):
     """

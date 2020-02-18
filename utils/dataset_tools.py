@@ -8,8 +8,6 @@ import tqdm
 from PIL import Image
 from torchvision import transforms
 
-from utils.gdrive_utils import download_dataset
-
 
 def maybe_unzip_dataset(args):
     datasets = [args.dataset_name]
@@ -33,7 +31,7 @@ def maybe_unzip_dataset(args):
             unzip_file(
                 filepath_pack=os.path.join(os.environ['DATASET_DIR'], "{}.tar.bz2".format(datasets[dataset_idx])),
                 filepath_to_store=os.environ['DATASET_DIR'])
-            args.reset_stored_filepaths = True
+
 
 
 def unzip_file(filepath_pack, filepath_to_store):
@@ -42,10 +40,10 @@ def unzip_file(filepath_pack, filepath_to_store):
     os.system(command_to_run)
 
 
-def check_download_dataset(args):
-    datasets = [args.dataset_name]
-    dataset_paths = [args.dataset_path]
-    print(os.path.abspath(os.environ['DATASET_DIR']))
+def check_download_dataset(dataset_name):
+    datasets = [dataset_name]
+    dataset_paths = [os.path.join(os.path.abspath(os.environ['DATASET_DIR']), dataset_name)]
+
     done = False
     for dataset_idx, dataset_path in enumerate(dataset_paths):
         if dataset_path.endswith('/'):
@@ -64,15 +62,17 @@ def check_download_dataset(args):
             zip_directory = "{}.tar.bz2".format(os.path.join(os.environ['DATASET_DIR'], datasets[dataset_idx]))
             if not os.path.exists(zip_directory):
                 print("Not found zip file, downloading..", zip_directory)
-                download_dataset(dataset_name="{}.tar.bz2".format(datasets[dataset_idx]),
-                                 path_to_save=os.environ['DATASET_DIR'])
-                print("Pack is downloaded, unpacking")
+                # download_dataset(dataset_name="{}.tar.bz2".format(datasets[dataset_idx]),
+                #                  path_to_save=os.environ['DATASET_DIR'])
+                return FileNotFoundError('Dataset is missing from the datasets folder, please download datasets and place '
+                                         'them in the datasets folder as specified in the README.md file')
+
             else:
                 print("Found zip file, unpacking")
             unzip_file(
                 filepath_pack=os.path.join(os.environ['DATASET_DIR'], "{}.tar.bz2".format(datasets[dataset_idx])),
                 filepath_to_store=os.environ['DATASET_DIR'])
-            args.reset_stored_filepaths = True
+
 
         total_files = 0
         for subdir, dir, files in os.walk(dataset_path):
@@ -80,30 +80,22 @@ def check_download_dataset(args):
                 if file.lower().endswith(".jpeg") or file.lower().endswith(".jpg") or file.lower().endswith(
                         ".png") or file.lower().endswith(".pkl"):
                     total_files += 1
-        print("count stuff________________________________________", total_files)
+        print("count stuff________________________________________", dataset_path, total_files)
         if (total_files == 1623 * 20 and datasets[dataset_idx] == 'omniglot_dataset') or (
                 total_files == 100 * 600 and 'mini_imagenet' in datasets[dataset_idx]) or (
-                total_files == 3 and 'mini_imagenet_pkl' in datasets[dataset_idx]) or (
                 total_files == 11788 and "cub" in datasets[dataset_idx]) or (
                 total_files == 779165 and "tiered_imagenet" in datasets[dataset_idx]) or (
-                total_files == 92460 and "omniglot_cifar100" in datasets[dataset_idx]) or (
-                total_files == 102460 and "omniglot_fashion_mnist" in datasets[dataset_idx]) or (
-                total_files == 164248 and "mini_imagenet_cub_omniglot_cifar100" in datasets[dataset_idx]) or (
-                total_files == 201000 and "bold_imagenet" in datasets[dataset_idx]):
+                total_files == 201000 and "SlimageNet64" in datasets[dataset_idx]):
             print("file count is correct")
             done = True
         else:
             print("file count is wrong, redownloading dataset")
-            download_dataset(dataset_name="{}.tar.bz2".format(datasets[dataset_idx]),
-                             path_to_save=os.environ['DATASET_DIR'])
-            print("Pack is downloaded, unpacking")
-            unzip_file(
-                filepath_pack=os.path.join(os.environ['DATASET_DIR'], "{}.tar.bz2".format(datasets[dataset_idx])),
-                filepath_to_store=os.environ['DATASET_DIR'])
-            args.reset_stored_filepaths = True
+            return FileNotFoundError('Dataset file count is erroneous, please confirm that the dataset contains '
+                                     'the right number of files, furthermore, confirm that utils/dataset_tools.py at'
+                                     ' line 84-88 specifies the dataset you are using and its file count correctly')
 
         if not done:
-            check_download_dataset(args=args)
+            check_download_dataset(dataset_name, dataset_path)
 
 
 def load_datapaths(dataset_dir, dataset_name, indexes_of_folders_indicating_class, labels_as_int):
@@ -145,7 +137,6 @@ def save_to_json(filename, dict_to_store):
 
 
 def load_from_json(filename):
-
     with open(filename, mode="r") as f:
         load_dict = json.load(fp=f)
 
@@ -274,8 +265,6 @@ def load_image(image_path):
         return None
 
 
-
-
 def load_batch(batch_image_paths):
     """
     Load a batch of images, given a list of filepaths
@@ -301,9 +290,9 @@ def load_dataset(dataset_dir, dataset_name, labels_as_int, seed, sets_are_pre_sp
 
     if sets_are_pre_split == True:
         data_image_paths, index_to_label_name_dict, label_to_index = load_datapaths(dataset_dir=dataset_dir,
-                                                                                         dataset_name=dataset_name,
-                                                                                         indexes_of_folders_indicating_class=indexes_of_folders_indicating_class,
-                                                                                         labels_as_int=labels_as_int)
+                                                                                    dataset_name=dataset_name,
+                                                                                    indexes_of_folders_indicating_class=indexes_of_folders_indicating_class,
+                                                                                    labels_as_int=labels_as_int)
         dataset_splits = dict()
         for key, value in data_image_paths.items():
             key = get_label_from_index(index=key, index_to_label_name_dict=index_to_label_name_dict)
@@ -318,9 +307,9 @@ def load_dataset(dataset_dir, dataset_name, labels_as_int, seed, sets_are_pre_sp
 
     else:
         data_image_paths, index_to_label_name_dict_file, label_to_index = load_datapaths(dataset_dir=dataset_dir,
-                                             dataset_name=dataset_name,
-                                             indexes_of_folders_indicating_class=indexes_of_folders_indicating_class,
-                                             labels_as_int=labels_as_int)
+                                                                                         dataset_name=dataset_name,
+                                                                                         indexes_of_folders_indicating_class=indexes_of_folders_indicating_class,
+                                                                                         labels_as_int=labels_as_int)
 
         total_label_types = len(data_image_paths)
         num_classes_idx = np.arange(len(data_image_paths.keys()), dtype=np.int32)
@@ -342,6 +331,5 @@ def load_dataset(dataset_dir, dataset_name, labels_as_int, seed, sets_are_pre_sp
                                  {class_key: data_image_paths[class_key] for class_key in x_val_classes}, \
                                  {class_key: data_image_paths[class_key] for class_key in x_test_classes},
         dataset_splits = {"train": x_train, "val": x_val, "test": x_test}
-
 
     return dataset_splits

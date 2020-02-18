@@ -12,9 +12,9 @@ from few_shot_learning_system import *
 
 # Combines the arguments, model, data and experiment builders to run an experiment
 
-if args.classifier_type == 'densenet-embedding-based':
+if args.classifier_type == 'maml++_high-end':
     model = EmbeddingMAMLFewShotClassifier(**args.__dict__)
-elif args.classifier_type == 'vgg-based':
+elif args.classifier_type == 'maml++_low-end':
     model = VGGMAMLFewShotClassifier(**args.__dict__)
 elif args.classifier_type == 'vgg-fine-tune-scratch':
     model = FineTuneFromScratchFewShotClassifier(**args.__dict__)
@@ -25,7 +25,7 @@ elif args.classifier_type == 'vgg-matching_network':
 else:
     raise NotImplementedError
 
-check_download_dataset(args=args)
+check_download_dataset(dataset_name=args.dataset_name)
 
 if args.image_channels == 3:
     transforms = [transforms.Resize(size=(args.image_height, args.image_width)), transforms.ToTensor(),
@@ -34,7 +34,7 @@ if args.image_channels == 3:
 elif args.image_channels == 1:
     transforms = [transforms.Resize(size=(args.image_height, args.image_width)), transforms.ToTensor()]
 
-train_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset_name,
+train_setup_dict = dict(dataset_name=args.dataset_name,
                         indexes_of_folders_indicating_class=args.indexes_of_folders_indicating_class,
                         train_val_test_split=args.train_val_test_split,
                         labels_as_int=args.labels_as_int, transforms=transforms,
@@ -44,13 +44,13 @@ train_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.datase
                         seed=args.seed,
                         sets_are_pre_split=args.sets_are_pre_split,
                         load_into_memory=args.load_into_memory, set_name='train',
-                        num_tasks_per_epoch=args.total_epochs * args.total_iter_per_epoch * args.num_continual_subtasks_per_task,
+                        num_tasks_per_epoch=args.total_epochs * args.total_iter_per_epoch * args.num_support_sets,
                         num_channels=args.image_channels,
-                        num_support_sets=args.num_continual_subtasks_per_task,
+                        num_support_sets=args.num_support_sets,
                         overwrite_classes_in_each_task=args.overwrite_classes_in_each_task,
-                        class_change_interval=args.same_class_interval)
+                        class_change_interval=args.class_change_interval)
 
-val_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset_name,
+val_setup_dict = dict(dataset_name=args.dataset_name,
                       indexes_of_folders_indicating_class=args.indexes_of_folders_indicating_class,
                       train_val_test_split=args.train_val_test_split,
                       labels_as_int=args.labels_as_int, transforms=transforms,
@@ -60,13 +60,13 @@ val_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset_
                       seed=args.seed,
                       sets_are_pre_split=args.sets_are_pre_split,
                       load_into_memory=args.load_into_memory, set_name='val',
-                      num_tasks_per_epoch=600 * args.num_continual_subtasks_per_task,
+                      num_tasks_per_epoch=600 * args.num_support_sets,
                       num_channels=args.image_channels,
-                      num_support_sets=args.num_continual_subtasks_per_task,
+                      num_support_sets=args.num_support_sets,
                       overwrite_classes_in_each_task=args.overwrite_classes_in_each_task,
-                      class_change_interval=args.same_class_interval)
+                      class_change_interval=args.class_change_interval)
 
-test_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset_name,
+test_setup_dict = dict(dataset_name=args.dataset_name,
                        indexes_of_folders_indicating_class=args.indexes_of_folders_indicating_class,
                        train_val_test_split=args.train_val_test_split,
                        labels_as_int=args.labels_as_int, transforms=transforms,
@@ -76,11 +76,11 @@ test_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset
                        seed=args.seed,
                        sets_are_pre_split=args.sets_are_pre_split,
                        load_into_memory=args.load_into_memory, set_name='test',
-                       num_tasks_per_epoch=600 * args.num_continual_subtasks_per_task,
+                       num_tasks_per_epoch=600 * args.num_support_sets,
                        num_channels=args.image_channels,
-                       num_support_sets=args.num_continual_subtasks_per_task,
+                       num_support_sets=args.num_support_sets,
                        overwrite_classes_in_each_task=args.overwrite_classes_in_each_task,
-                       class_change_interval=args.same_class_interval)
+                       class_change_interval=args.class_change_interval)
 
 train_data = FewShotLearningDatasetParallel(**train_setup_dict)
 
@@ -88,11 +88,11 @@ val_data = FewShotLearningDatasetParallel(**val_setup_dict)
 
 test_data = FewShotLearningDatasetParallel(**test_setup_dict)
 
-data_dict = {'train': DataLoader(train_data, batch_size=args.batch_size * args.num_continual_subtasks_per_task,
+data_dict = {'train': DataLoader(train_data, batch_size=args.batch_size,
                                  num_workers=args.num_dataprovider_workers),
-             'val': DataLoader(val_data, batch_size=args.batch_size * args.num_continual_subtasks_per_task,
+             'val': DataLoader(val_data, batch_size=args.batch_size,
                                num_workers=args.num_dataprovider_workers),
-             'test': DataLoader(test_data, batch_size=args.batch_size * args.num_continual_subtasks_per_task,
+             'test': DataLoader(test_data, batch_size=args.batch_size,
                                 num_workers=args.num_dataprovider_workers)}
 
 maml_system = ExperimentBuilder(model=model, data_dict=data_dict, experiment_name=args.experiment_name,

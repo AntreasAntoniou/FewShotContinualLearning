@@ -179,11 +179,8 @@ class MAMLFewShotClassifier(nn.Module):
         for name, param in params:
             if param.requires_grad:
                 if all([item not in name for item in exclude_strings]):
-                    if self.enable_inner_loop_optimizable_bn_params:
+                    if "norm_layer" not in name and 'bn' not in name and 'prelu' not in name:
                         param_dict[name] = param.to(device=torch.cuda.current_device())
-                    else:
-                        if "norm_layer" not in name and 'bn' not in name and 'prelu' not in name:
-                            param_dict[name] = param.to(device=torch.cuda.current_device())
         return param_dict
 
     def net_forward(self, x, y, weights, backup_running_statistics, training, num_step,
@@ -385,14 +382,14 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         self.current_iter = 0
 
         output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_continual_subtasks_per_task
+            self.num_classes_per_set * self.num_support_sets
 
         self.classifier = VGGActivationNormNetworkWithAttention(input_shape=encoded_x.shape,
                                                                 num_output_classes=output_units,
                                                                 num_stages=1, use_channel_wise_attention=True,
                                                                 num_filters=48,
                                                                 num_support_set_steps=2 *
-                                                                                      self.num_continual_subtasks_per_task
+                                                                                      self.num_support_sets
                                                                                       * self.num_support_set_steps,
                                                                 num_target_set_steps=self.num_support_set_steps + 1,
                                                                 num_blocks_per_stage=1)
@@ -437,7 +434,7 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         self.inner_loop_optimizer = LSLRGradientDescentLearningRule(
             total_num_inner_loop_steps=2 * (
-                    self.num_continual_subtasks_per_task * self.num_support_set_steps) + self.num_target_set_steps + 1,
+                    self.num_support_sets * self.num_support_set_steps) + self.num_target_set_steps + 1,
             learnable_learning_rates=self.learnable_learning_rates,
             init_learning_rate=self.init_learning_rate)
 
@@ -543,11 +540,11 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         :return: A tensor to be used to compute the weighted average of the loss, useful for
         the MSL (Multi Step Loss) mechanism.
         """
-        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task,),
+        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
                                   device=torch.cuda.current_device()) / (
-                               self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)
+                               self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
-                self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)) / 100.
+                self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
 
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
@@ -614,7 +611,7 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
             x_target_set_task = image_embedding[x_support_set_task.shape[0]:]
 
             x_support_set_task = x_support_set_task.view(
-                (self.num_continual_subtasks_per_task, self.num_classes_per_set, self.num_samples_per_support_class,
+                (self.num_support_sets, self.num_classes_per_set, self.num_samples_per_support_class,
                  x_support_set_task.shape[-3],
                  x_support_set_task.shape[-2], x_support_set_task.shape[-1]))
 
@@ -940,7 +937,7 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         num_support_samples = x_support_set.shape[0]
 
         output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_continual_subtasks_per_task
+            self.num_classes_per_set * self.num_support_sets
 
         self.current_iter = 0
 
@@ -948,7 +945,7 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
                                                    num_output_classes=output_units,
                                                    num_stages=4, use_channel_wise_attention=True,
                                                    num_filters=48,
-                                                   num_support_set_steps=2 * self.num_continual_subtasks_per_task * self.num_support_set_steps,
+                                                   num_support_set_steps=2 * self.num_support_sets * self.num_support_set_steps,
                                                    num_target_set_steps=self.num_target_set_steps + 1,
                                                    )
 
@@ -1007,7 +1004,7 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         self.inner_loop_optimizer = LSLRGradientDescentLearningRule(
             total_num_inner_loop_steps=2 * (
-                    self.num_continual_subtasks_per_task * self.num_support_set_steps) + self.num_target_set_steps + 1,
+                    self.num_support_sets * self.num_support_set_steps) + self.num_target_set_steps + 1,
             learnable_learning_rates=self.learnable_learning_rates,
             init_learning_rate=self.init_learning_rate)
 
@@ -1107,11 +1104,11 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         :return: A tensor to be used to compute the weighted average of the loss, useful for
         the MSL (Multi Step Loss) mechanism.
         """
-        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task,),
+        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
                                   device=torch.cuda.current_device()) / (
-                               self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)
+                               self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
-                self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)) / 100.
+                self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
 
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
@@ -1494,7 +1491,7 @@ class MatchingNetworkFewShotClassifier(nn.Module):
         y_target_set = y_target_set.view(-1)
 
         output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_continual_subtasks_per_task
+            self.num_classes_per_set * self.num_support_sets
 
         y_support_set_one_hot = int_to_one_hot(y_support_set)
 
@@ -1544,7 +1541,7 @@ class MatchingNetworkFewShotClassifier(nn.Module):
         losses['accuracy'] = accuracy
 
         return losses, preds.view(self.batch_size,
-                                  self.num_continual_subtasks_per_task * self.num_classes_per_set *
+                                  self.num_support_sets * self.num_classes_per_set *
                                   self.num_samples_per_target_class,
                                   output_units)
 
@@ -1762,7 +1759,7 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
         num_support_samples = x_support_set.shape[0]
 
         output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_continual_subtasks_per_task
+            self.num_classes_per_set * self.num_support_sets
 
         self.current_iter = 0
 
@@ -1770,7 +1767,7 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
                                                    num_output_classes=[output_units, 2000],
                                                    num_stages=4, use_channel_wise_attention=True,
                                                    num_filters=48,
-                                                   num_support_set_steps=2 * self.num_continual_subtasks_per_task * self.num_support_set_steps,
+                                                   num_support_set_steps=2 * self.num_support_sets * self.num_support_set_steps,
                                                    num_target_set_steps=self.num_target_set_steps + 1,
                                                    )
 
@@ -1836,7 +1833,7 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
 
         self.inner_loop_optimizer = LSLRGradientDescentLearningRule(
             total_num_inner_loop_steps=2 * (
-                    self.num_continual_subtasks_per_task * self.num_support_set_steps) + self.num_target_set_steps + 1,
+                    self.num_support_sets * self.num_support_set_steps) + self.num_target_set_steps + 1,
             learnable_learning_rates=self.learnable_learning_rates,
             init_learning_rate=self.init_learning_rate)
 
@@ -1923,11 +1920,11 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
         :return: A tensor to be used to compute the weighted average of the loss, useful for
         the MSL (Multi Step Loss) mechanism.
         """
-        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task,),
+        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
                                   device=torch.cuda.current_device()) / (
-                               self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)
+                               self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
-                self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)) / 100.
+                self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
 
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
@@ -2325,7 +2322,7 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
         num_support_samples = x_support_set.shape[0]
 
         output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_continual_subtasks_per_task
+            self.num_classes_per_set * self.num_support_sets
 
         self.current_iter = 0
 
@@ -2333,7 +2330,7 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
                                                    num_output_classes=output_units,
                                                    num_stages=4, use_channel_wise_attention=True,
                                                    num_filters=48,
-                                                   num_support_set_steps=2 * self.num_continual_subtasks_per_task * self.num_support_set_steps,
+                                                   num_support_set_steps=2 * self.num_support_sets * self.num_support_set_steps,
                                                    num_target_set_steps=self.num_target_set_steps + 1,
                                                    )
 
@@ -2398,7 +2395,7 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
 
         self.inner_loop_optimizer = LSLRGradientDescentLearningRule(
             total_num_inner_loop_steps=2 * (
-                    self.num_continual_subtasks_per_task * self.num_support_set_steps) + self.num_target_set_steps + 1,
+                    self.num_support_sets * self.num_support_set_steps) + self.num_target_set_steps + 1,
             learnable_learning_rates=self.learnable_learning_rates,
             init_learning_rate=self.init_learning_rate)
 
@@ -2487,11 +2484,11 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
         :return: A tensor to be used to compute the weighted average of the loss, useful for
         the MSL (Multi Step Loss) mechanism.
         """
-        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task,),
+        loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
                                   device=torch.cuda.current_device()) / (
-                               self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)
+                               self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
-                self.number_of_training_steps_per_iter * self.num_continual_subtasks_per_task)) / 100.
+                self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
 
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 

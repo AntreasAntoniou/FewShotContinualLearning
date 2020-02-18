@@ -1,13 +1,13 @@
 import concurrent.futures
 from collections import defaultdict
-
+import os
 import numpy as np
 import torch
 import tqdm
 from PIL import ImageFile
 from torch.utils.data import Dataset
 
-from utils.dataset_tools import get_label_set, load_dataset, load_image
+from utils.dataset_tools import get_label_set, load_dataset, load_image, check_download_dataset
 import re
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -46,7 +46,7 @@ class ConvertToThreeChannels(object):
 
 
 class FewShotLearningDatasetParallel(Dataset):
-    def __init__(self, dataset_path, dataset_name, indexes_of_folders_indicating_class, train_val_test_split,
+    def __init__(self, dataset_name, indexes_of_folders_indicating_class, train_val_test_split,
                  labels_as_int, transforms, num_classes_per_set, num_support_sets,
                  num_samples_per_support_class, num_channels,
                  num_samples_per_target_class, seed, sets_are_pre_split,
@@ -59,8 +59,9 @@ class FewShotLearningDatasetParallel(Dataset):
         data-provider. For transparency and readability reasons to explicitly set as self.object_name all arguments
         required for the data provider, such that the reader knows exactly what is necessary for the data provider/
         """
-        self.dataset_path = dataset_path
-        self.dataset_name = dataset_name
+        check_download_dataset(dataset_name=dataset_name)
+        dataset_name = dataset_name
+        dataset_path = os.path.join(os.path.abspath(os.environ['DATASET_DIR']), dataset_name)
         self.indexes_of_folders_indicating_class = indexes_of_folders_indicating_class
 
         self.labels_as_int = labels_as_int
@@ -204,10 +205,10 @@ class FewShotLearningDatasetParallel(Dataset):
 
         x_support_set_task = torch.stack(x_support_set_task, dim=0)
         x_target_set_task = torch.stack(x_target_set_task, dim=0)
-        y_support_set_task = torch.stack(y_support_set_task, dim=0)
-        y_target_set_task = torch.stack(y_target_set_task, dim=0)
+        y_support_set_task = torch.stack(y_support_set_task, dim=0).long()
+        y_target_set_task = torch.stack(y_target_set_task, dim=0).long()
         x_task = torch.stack(x_task, dim=0)
-        y_task = torch.stack(y_task, dim=0)
+        y_task = torch.stack(y_task, dim=0).long()
 
         if not self.overwrite_classes_in_each_task:
             for i in range(self.num_support_sets):

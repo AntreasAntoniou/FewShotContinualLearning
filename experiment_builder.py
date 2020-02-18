@@ -205,20 +205,6 @@ class ExperimentBuilder(object):
 
         x_support_set, x_target_set, y_support_set, y_target_set, x, y = data_batch
 
-        x_support_set = x_support_set.view(self.batch_size, self.num_continual_subtasks_per_task,
-                                           x_support_set.shape[2], x_support_set.shape[3], x_support_set.shape[4],
-                                           x_support_set.shape[5], x_support_set.shape[6])
-
-        x_target_set = x_target_set.view(self.batch_size, self.num_continual_subtasks_per_task,
-                                         x_target_set.shape[2], x_target_set.shape[3], x_target_set.shape[4],
-                                         x_target_set.shape[5], x_target_set.shape[6])
-
-        y_support_set = y_support_set.view(self.batch_size, self.num_continual_subtasks_per_task,
-                                           y_support_set.shape[2], y_support_set.shape[3])
-
-        y_target_set = y_target_set.view(self.batch_size, self.num_continual_subtasks_per_task,
-                                         y_target_set.shape[2], y_target_set.shape[3])
-
         return x_support_set, x_target_set, y_support_set, y_target_set,  x, y
 
     def save_models(self, model, epoch, state):

@@ -1,10 +1,10 @@
-# Learning to Learn via Self-Critique in Pytorch
-The original code for the paper ["Learning to Learn via Self-Critique"]().
+# Benchmarks for Continual Few-Shot Learning in Pytorch
+The original code for the paper ["Benchmarks for Continual Few-Shot Learning"]().
 
 ## Introduction
 
-Welcome to the code repository of How to train your MAML arxiv_url. This repository includes code for training both MAML
-and MAML++ models, as well as data providers and the datasets for both. By using this codebase you agree to the terms 
+Welcome to the code repository of *Benchmarks for Continual Few-Shot Learning*. This repository includes code for training 
+Low-End and High-End MAML++ as well as SCA and ProtoNets on continual few-shot learning tasks. We also provide data providers and the datasets for both Omniglot and SlimageNet. By using this codebase you agree to the terms 
 and conditions in the LICENSE file.
 
 ## Installation
@@ -16,9 +16,9 @@ If you have an existing miniconda3 installation please start at step 3.
 If you want to  install both conda and the required packages, please run:
  1. ```wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh```
  2. Go through the installation.
- 3. Activate conda
- 4. conda create -n meta_learning_pytorch_env python=3.6.
- 5. conda activate meta_learning_pytorch_env
+ 3. Activate conda using ```conda activate```
+ 4. conda create -n pytorch_env python=3.6.
+ 5. conda activate pytorch_env
  6. At this stage you need to choose which version of pytorch you need by visiting [here](https://pytorch.org/get-started/locally/)
  7. Choose and install the pytorch variant of your choice using the conda commands.
  8. Then run ```bash install.sh```
@@ -26,19 +26,21 @@ If you want to  install both conda and the required packages, please run:
 To execute an installation script simply run:
 ```bash <installation_file_name>```
 
-To activate your conda installations simply run:
-```conda activate```
 
 ## Datasets
 We provide functionality for both Mini-ImageNet and CUB. We have automated the unzipping and usage of the datasets, all one needs to do is download them from:
 
-- [mini_imagenet gdrive folder](https://drive.google.com/file/d/1qQCoGoEJKUCQkk8roncWH7rhPN7aMfBr/view?usp=sharing)
-- [cub gdrive folder](https://drive.google.com/file/d/1y6bSXpxDQ1cwuX4Qw9X4gImLWvzn4NpN/view?usp=sharing)
+- [SlimageNet repository](https://drive.google.com/file/d/1qQCoGoEJKUCQkk8roncWH7rhPN7aMfBr/view?usp=sharing)
+- [Omniglot part_1](https://github.com/brendenlake/omniglot/blob/master/python/images_background.zip)
+- [Omniglot part_2](https://github.com/brendenlake/omniglot/blob/master/python/images_evaluation.zip)
 
 Once downloaded, please place them in the datasets folder in this repo. The rest will be done automagically when you 
 run an experiment.
 
-Note: By downloading and using the mini-imagenet datasets, you accept terms and conditions found in [imagenet_license.md](https://github.com/AntreasAntoniou/HowToTrainYourMAMLPytorch/blob/master/imagenet_license.md) 
+For **Omniglot**, unzip the two folders and mix their contents into a single folder which should then be placed under the 
+datasets folder.
+
+**Note**: By downloading and using the SlimageNet dataset, you accept terms and conditions found in [imagenet_license.md](https://github.com/AntreasAntoniou/HowToTrainYourMAMLPytorch/blob/master/imagenet_license.md) 
 
 #### Other Datasets:
 We provide a mechanism for quick and easy training of models on any image-based datasets. 
@@ -119,30 +121,32 @@ If we pass weights to it, then the layer/model will use those to do inference, o
 parameters. Doing so allows a model like MAML to be build very easily. At the first step, use weights=None and for any
 subsequent step just pass the new inner loop/dynamic weights to the network.
 
-- train_maml_system.py: A very minimal script that combines the data provider with a meta learning system and sends them
+- standard_neural_network_architectures: A module containing an array of neural network architectures that do not 
+utlize inner loop optimization.
+
+- train_continual_learning_few_shot_system.py: A very minimal script that combines the data provider with a meta learning system and sends them
  to the experiment builder to run an experiment. Also takes care of automated extraction of data if they are not 
  available in a folder structure.
 
 # Running an experiment
 
 To run an experiment from the paper on Omniglot:
-1. Activate your conda environment ```conda activate pytorch_meta_learning_env```
+1. Activate your conda environment ```conda activate pytorch_env```
 2. cd experiment_scripts
 3. Find which experiment you want to run.
 4. ```bash experiment_script.sh```
 
-Note: By downloading and using the mini-imagenet datasets, you accept terms and conditions found in [imagenet_license.md](https://github.com/AntreasAntoniou/HowToTrainYourMAMLPytorch/blob/master/imagenet_license.md) 
 
 To run an experiment from the paper on Mini-Imagenet:
 1. Activate your conda environment ```conda activate pytorch_meta_learning_env```
-2. Download the mini_imagenet dataset from the [gdrive folder](https://drive.google.com/file/d/1ljP5AaiwZoS6LmEx6UquG_UScUaUd4-m/view?usp=sharing)
+2. Download the SlimageNet64 dataset from the [SlimageNet64 repository]()
 3. copy the .pbzip file in datasets
 4. cd experiment_scripts
 5. Find which experiment you want to run.
 6. ```bash experiment_script.sh```
 
 To run a custom/new experiment on any dataset:
-1. Activate your conda environment ```conda activate pytorch_meta_learning_env```
+1. Activate your conda environment ```conda activate pytorch_env```
 2. Make sure your data is in datasets/ in a folder structure the data provider can read.
 3. cd experiment_template_config
 4. Find an experiment close to what you want to do and open its config file.
@@ -153,49 +157,75 @@ what to fill those with.
 6.
     ```json
     {
-      "batch_size":16,
-      "image_height":28,
-      "image_width":28,
-      "image_channels":1,
-      "gpu_to_use":0,
-      "num_dataprovider_workers":8,
-      "max_models_to_save":5,
-      "dataset_name":"omniglot_dataset",
-      "dataset_path":"omniglot_dataset",
-      "reset_stored_paths":false,
-      "experiment_name":"MAML++_Omniglot_$num_classes$_way_$samples_per_class$_shot_$train_update_steps$_filter_multi_step_loss_with_max_pooling_seed_$train_seed$",
-      "train_seed": $train_seed$, "val_seed": $val_seed$,
-      "train_val_test_split": [0.70918052988, 0.03080714725, 0.2606284658],
-      "indexes_of_folders_indicating_class": [-3, -2],
-      "sets_are_pre_split": false,
-    
-      "total_epochs": 150,
-      "total_iter_per_epoch":500, "continue_from_epoch": -2,
-    
-      "max_pooling": true,
-      "per_step_bn_statistics": true,
-      "learnable_batch_norm_momentum": false,
-    
-      "dropout_rate_value":0.0,
-      "min_learning_rate":0.001,
-      "meta_learning_rate":0.001,   "total_epochs_before_pause": 150,
-      "task_learning_rate":-1,
-      "init_task_learning_rate":0.4,
-      "first_order_to_second_order_epoch":80,
-    
-      "norm_layer":"batch_norm",
-      "cnn_num_filters":64,
-      "num_stages":4,
-      "number_of_training_steps_per_iter":$train_update_steps$,
-      "number_of_evaluation_steps_per_iter":$val_update_steps$,
-      "cnn_blocks_per_stage":1,
-      "num_classes_per_set":$num_classes$,
-      "num_samples_per_class":$samples_per_class$,
-      "num_target_samples": $target_samples_per_class$,
-    
-      "second_order": true,
-      "optimize_final_target_loss_only":false,
-      "use_gdrive":false
+        "batch_size":$batch_size$,
+        "image_height":28,
+        "image_width":28,
+        "image_channels":1,
+        "gpu_to_use":0,
+        "num_dataprovider_workers":8,
+        "max_models_to_save":5,
+        "dataset_name":"omniglot_dataset",
+        "dataset_path":"omniglot_dataset",
+        "reset_stored_paths":false,
+        "experiment_name":"embedding_64_2_2_$experiment_name$",
+        "train_seed": $train_seed$, "val_seed": $val_seed$,
+        "indexes_of_folders_indicating_class": [-3, -2],
+        "sets_are_pre_split": false,
+        "train_val_test_split": [0.73982737361, 0.13008631319, 0.13008631319],
+      
+        "num_filters": 64,
+        "num_blocks_per_stage": 2,
+        "num_stages": 2,
+        "dropout_rate": 0.0,
+        "output_spatial_dimensionality": 5,
+      
+        "total_epochs": $total_epochs$,
+        "total_iter_per_epoch":500, "continue_from_epoch": -2,
+        "evaluate_on_test_set_only": false,
+        "exclude_param_string": $exclude_param_string$,
+        "num_evaluation_tasks": 600,
+        "multi_step_loss_num_epochs": -1,
+        "minimum_per_task_contribution": 0.01,
+        "learnable_learning_rates": $learnable_learning_rates$,
+        "learnable_betas": $learnable_betas$,
+        "num_support_set_steps": $train_update_steps$,
+        "num_target_set_steps": $num_target_set_steps$,
+        "same_class_interval": $same_class_interval$,
+      
+        "max_pooling": true,
+        "per_step_bn_statistics": true,
+        "learnable_batch_norm_momentum": false,
+        "load_into_memory": $load_into_memory$,
+        "inner_loop_optimizer_type": "$inner_loop_optimizer_type$",
+        "init_learning_rate": $inner_loop_learning_rate$,
+        "learnable_bn_gamma": $learnable_bn_gamma$,
+        "learnable_bn_beta": $learnable_bn_beta$,
+        "classifier_type": "$classifier_type$",
+      
+        "dropout_rate_value":0.0,
+        "min_learning_rate":0.001,
+        "meta_learning_rate":0.001,   "total_epochs_before_pause": 300,
+        "task_learning_rate":-1,
+        "first_order_to_second_order_epoch":-1,
+        "weight_decay": 0.0001,
+        "use_channel_wise_attention": $use_channel_wise_attention$,
+      
+      
+        "norm_layer":"batch_norm",
+        "cnn_num_filters":$num_filters$,
+        "conditional_information": $conditional_information$,
+        "conv_padding": $conv_padding$,
+        "num_output_filters": 64,
+        "number_of_training_steps_per_iter":$train_update_steps$,
+        "number_of_evaluation_steps_per_iter":$val_update_steps$,
+        "num_classes_per_set":$num_classes_per_set$,
+        "num_samples_per_support_class":$num_samples_per_support_class$,
+        "num_samples_per_target_class": $num_samples_per_target_class$,
+        "num_continual_subtasks_per_task": $num_continual_subtasks_per_task$,
+        "overwrite_classes_in_each_task": $overwrite_classes_in_each_task$,
+      
+        "second_order": true,
+        "use_multi_step_loss_optimization":false
     }
     
     ```
