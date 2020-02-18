@@ -8,7 +8,7 @@
   "max_models_to_save":5,
   "dataset_name":"omniglot_dataset",
   "reset_stored_paths":false,
-  "experiment_name":"embedding_64_2_2_omniglot_variant_default_5_way_1_vgg-matching_network_shot__true_5_5_lslr_conditioned_2",
+  "experiment_name":"omniglot_variant_default_5_way_1_vgg-matching_network_shot__true_5_5_lslr_conditioned_2",
   "train_seed": 2, "val_seed": 2,
   "indexes_of_folders_indicating_class": [-3, -2],
   "sets_are_pre_split": false,
