@@ -40,7 +40,7 @@ run an experiment.
 For **Omniglot**, unzip the two folders and mix their contents into a single folder which should then be placed under the 
 datasets folder.
 
-**Note**: By downloading and using the SlimageNet dataset, you accept terms and conditions found in [imagenet_license.md](https://github.com/AntreasAntoniou/HowToTrainYourMAMLPytorch/blob/master/imagenet_license.md) 
+**Note**: By downloading and using the SlimageNet dataset, you accept terms and conditions found in [imagenet_license.md](https://github.com//FewShotContinualLearning/blob/master/imagenet_license.md) 
 
 #### Other Datasets:
 We provide a mechanism for quick and easy training of models on any image-based datasets. 

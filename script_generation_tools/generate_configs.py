@@ -78,33 +78,34 @@ for (n_way, k_shot, batch_size) in [(5, 1, 1)]:
                                    class_change_interval=class_change_interval))
 
                         for conditional_information in experiment_conditional_information_config:
-                            configs_list.append(
-                                config(num_classes_per_set=5,
-                                       num_samples_per_support_class=k_shot,
-                                       num_samples_per_target_class=5,
-                                       batch_size=batch_size, train_update_steps=5, val_update_steps=1,
-                                       inner_loop_learning_rate=0.01,
-                                       conv_padding=1, num_filters=48, load_into_memory=False,
-                                       conditional_information=string_generator(conditional_information),
-                                       num_target_set_steps=1, weight_decay=0.0001,
-                                       total_epochs=total_epochs,
-                                       exclude_param_string=string_generator(
-                                           ["None"]),
-                                       experiment_name='SCA_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
-                                           n_way, k_shot, classifier_type, "_".join(conditional_information),
-                                           overwrite_classes_in_each_task, num_support_sets,
-                                           class_change_interval),
-                                       learnable_bn_beta=True,
-                                       learnable_bn_gamma=True,
-                                       num_stages=4, num_blocks_per_stage=0,
-                                       inner_loop_optimizer_type='LSLR', learnable_betas=False,
-                                       learnable_learning_rates=True,
-                                       output_spatial_dimensionality=output_dim,
-                                       use_channel_wise_attention=use_channel_wise_attention,
-                                       classifier_type=classifier_type,
-                                       num_support_sets=num_support_sets,
-                                       overwrite_classes_in_each_task=overwrite_classes_in_each_task,
-                                       class_change_interval=class_change_interval))
+                            if classifier_type == 'maml++_high-end':
+                                configs_list.append(
+                                    config(num_classes_per_set=5,
+                                           num_samples_per_support_class=k_shot,
+                                           num_samples_per_target_class=5,
+                                           batch_size=batch_size, train_update_steps=5, val_update_steps=1,
+                                           inner_loop_learning_rate=0.01,
+                                           conv_padding=1, num_filters=48, load_into_memory=False,
+                                           conditional_information=string_generator(conditional_information),
+                                           num_target_set_steps=1, weight_decay=0.0001,
+                                           total_epochs=total_epochs,
+                                           exclude_param_string=string_generator(
+                                               ["None"]),
+                                           experiment_name='SCA_{}_way_{}_{}_shot_{}_{}_{}_{}_LSLR_conditioned'.format(
+                                               n_way, k_shot, classifier_type, "_".join(conditional_information),
+                                               overwrite_classes_in_each_task, num_support_sets,
+                                               class_change_interval),
+                                           learnable_bn_beta=True,
+                                           learnable_bn_gamma=True,
+                                           num_stages=4, num_blocks_per_stage=0,
+                                           inner_loop_optimizer_type='LSLR', learnable_betas=False,
+                                           learnable_learning_rates=True,
+                                           output_spatial_dimensionality=output_dim,
+                                           use_channel_wise_attention=use_channel_wise_attention,
+                                           classifier_type=classifier_type,
+                                           num_support_sets=num_support_sets,
+                                           overwrite_classes_in_each_task=overwrite_classes_in_each_task,
+                                           class_change_interval=class_change_interval))
 
                 else:
                     configs_list.append(
