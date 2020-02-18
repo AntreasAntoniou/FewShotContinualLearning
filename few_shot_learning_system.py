@@ -989,7 +989,7 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
             if torch.cuda.device_count() > 1:
                 self.to(torch.cuda.current_device())
-                self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
+                self.classifier = nn.DataParallel(module=self.classifier)
             else:
                 self.to(torch.cuda.current_device())
 
