@@ -26,7 +26,7 @@ def augment_image(image, transforms):
     return image
 
 
-class AddChannelsToTensor(object):
+class ConvertToThreeChannels(object):
     """Convert a ``PIL Image`` or ``numpy.ndarray`` to tensor.
 
     Converts a single-channel image into a three-channel image, by cloning the original channel three times.
@@ -47,10 +47,11 @@ class AddChannelsToTensor(object):
 
 class FewShotLearningDatasetParallel(Dataset):
     def __init__(self, dataset_path, dataset_name, indexes_of_folders_indicating_class, train_val_test_split,
-                 labels_as_int, transforms, num_classes_per_set, num_continual_subtasks_per_task,
+                 labels_as_int, transforms, num_classes_per_set, num_support_sets,
                  num_samples_per_support_class, num_channels,
                  num_samples_per_target_class, seed, sets_are_pre_split,
-                 load_into_memory, set_name, num_tasks_per_epoch, overwrite_classes_in_each_task, same_class_interval):
+                 load_into_memory, set_name, num_tasks_per_epoch, overwrite_classes_in_each_task,
+                 class_change_interval):
         """
         A data provider class inheriting from Pytorch's Dataset class. It takes care of creating task sets for
         our few-shot learning model training and evaluation
@@ -68,9 +69,9 @@ class FewShotLearningDatasetParallel(Dataset):
         self.num_samples_per_support_class = num_samples_per_support_class
         self.num_classes_per_set = num_classes_per_set
         self.num_samples_per_target_class = num_samples_per_target_class
-        self.num_continual_subtasks_per_task = num_continual_subtasks_per_task
+        self.num_support_sets = num_support_sets
         self.overwrite_classes_in_each_task = overwrite_classes_in_each_task
-        self.same_class_interval = same_class_interval
+        self.class_change_interval = class_change_interval
 
         self.dataset = load_dataset(dataset_path, dataset_name, labels_as_int, seed, sets_are_pre_split,
                                     load_into_memory,
@@ -114,77 +115,117 @@ class FewShotLearningDatasetParallel(Dataset):
         :return: A task-set containing an image and label support set, and an image and label target set.
         """
 
+        # NSS, CCI, N-WAY, K-SHOT, OVERWRITE
+
         rng = np.random.RandomState(seed)
         class_rng = np.random.RandomState(class_seed)
-        selected_classes = class_rng.choice(list(self.dataset_size_dict.keys()),
-                                            size=self.num_classes_per_set, replace=False)
-        class_rng.shuffle(selected_classes)
-        # print(selected_classes)
 
-        episode_labels = [i for i in range(self.num_classes_per_set)]
+        x_support_set_task = []
+        x_target_set_task = []
+        y_support_set_task = []
+        y_target_set_task = []
+        x_task = []
+        y_task = []
 
-        class_to_episode_label = {selected_class: episode_label for (selected_class, episode_label) in
-                                  zip(selected_classes, episode_labels)}
+        class_keys_copy = list(self.dataset_size_dict.keys()).copy()
 
-        episode_label_to_orig_class = {episode_label: selected_class for (selected_class, episode_label) in
-                                       zip(selected_classes, episode_labels)}
+        for class_sample_idx in range(int(self.num_support_sets / self.class_change_interval)):
 
-        set_paths = [self.dataset[class_idx][sample_idx] for
-                     class_idx in selected_classes for sample_idx in
-                     rng.choice(len(self.dataset[class_idx]),
-                                size=self.num_samples_per_support_class + self.num_samples_per_target_class,
-                                replace=False)]
+            selected_classes = class_rng.choice(class_keys_copy,
+                                                size=self.num_classes_per_set, replace=False)
+            for key in selected_classes:
+                class_keys_copy.remove(key)
 
-        if not self.load_into_memory:
-            x = [augment_image(load_image(image_path), transforms=self.transforms) for image_path in set_paths]
-        else:
-            x = [torch.tensor(image_path.copy()) for image_path in set_paths]
+            class_rng.shuffle(selected_classes)
 
-        y = np.array([(self.num_samples_per_support_class + self.num_samples_per_target_class) * [
-            class_to_episode_label[class_idx]]
-                      for class_idx in selected_classes])
+            episode_labels = [i for i in range(self.num_classes_per_set)]
 
-        for idx, item in enumerate(x):
-            if not item.shape[0] == num_channels:
-                if item.shape[0] > num_channels:
-                    x[idx] = x[idx][:num_channels]
-                elif item.shape[0] == 1:
-                    x[idx] = item.repeat([num_channels, 1, 1])
+            class_to_episode_label = {selected_class: episode_label for (selected_class, episode_label) in
+                                      zip(selected_classes, episode_labels)}
 
-        x = torch.stack(x)
+            episode_label_to_orig_class = {episode_label: selected_class for (selected_class, episode_label) in
+                                           zip(selected_classes, episode_labels)}
 
-        y = y.reshape(1, self.num_classes_per_set,
-                      self.num_samples_per_support_class + self.num_samples_per_target_class)
+            set_paths = [self.dataset[class_idx][sample_idx] for
+                         class_idx in selected_classes for sample_idx in
+                         rng.choice(len(self.dataset[class_idx]),
+                                    size=self.num_samples_per_support_class + self.num_samples_per_target_class,
+                                    replace=False)]
 
-        x = x.view(1, self.num_classes_per_set,
-                   self.num_samples_per_support_class + self.num_samples_per_target_class, x.shape[1], x.shape[2],
-                   x.shape[3])
+            for support_set_idx in range(self.class_change_interval):
 
-        x_support_set = x[:, :, :self.num_samples_per_support_class]
-        y_support_set = y[:, :, :self.num_samples_per_support_class]
+                if not self.load_into_memory:
+                    x = [augment_image(load_image(image_path), transforms=self.transforms) for image_path in set_paths]
+                else:
+                    x = [torch.tensor(image_path.copy()) for image_path in set_paths]
 
-        x_target_set = x[:, :, self.num_samples_per_support_class:]
-        y_target_set = y[:, :, self.num_samples_per_support_class:]
+                y = np.array([(self.num_samples_per_support_class + self.num_samples_per_target_class) * [
+                    class_to_episode_label[class_idx]]
+                              for class_idx in selected_classes])
 
-        x = x.view(-1, x.shape[-3], x.shape[-2],
-                   x.shape[-1])
+                for idx, item in enumerate(x):
+                    if not item.shape[0] == num_channels:
+                        if item.shape[0] > num_channels:
+                            x[idx] = x[idx][:num_channels]
+                        elif item.shape[0] == 1:
+                            x[idx] = item.repeat([num_channels, 1, 1])
 
-        y = y.reshape(-1)
+                x = torch.stack(x)
 
-        y = torch.Tensor([int(remove_non_numerical_chars(episode_label_to_orig_class[item])) for item in y])
+                y = y.reshape(1, self.num_classes_per_set,
+                              self.num_samples_per_support_class + self.num_samples_per_target_class)
 
-        return x_support_set, x_target_set, y_support_set, y_target_set, x, y
+                y = torch.Tensor(y)
+
+                x = x.view(1, self.num_classes_per_set,
+                           self.num_samples_per_support_class + self.num_samples_per_target_class, x.shape[1],
+                           x.shape[2],
+                           x.shape[3])
+
+                x_support_set = x[:, :, :self.num_samples_per_support_class]
+                y_support_set = y[:, :, :self.num_samples_per_support_class]
+
+                x_target_set = x[:, :, self.num_samples_per_support_class:]
+                y_target_set = y[:, :, self.num_samples_per_support_class:]
+
+                x = x.view(-1, x.shape[-3], x.shape[-2],
+                           x.shape[-1])
+
+                y = y.reshape(-1).numpy()
+
+                y = torch.Tensor([int(remove_non_numerical_chars(episode_label_to_orig_class[item])) for item in y])
+
+                x_support_set_task.append(x_support_set)
+                x_target_set_task.append(x_target_set)
+                y_support_set_task.append(y_support_set)
+                y_target_set_task.append(y_target_set)
+                x_task.append(x)
+                y_task.append(y)
+
+        x_support_set_task = torch.stack(x_support_set_task, dim=0)
+        x_target_set_task = torch.stack(x_target_set_task, dim=0)
+        y_support_set_task = torch.stack(y_support_set_task, dim=0)
+        y_target_set_task = torch.stack(y_target_set_task, dim=0)
+        x_task = torch.stack(x_task, dim=0)
+        y_task = torch.stack(y_task, dim=0)
+
+        if not self.overwrite_classes_in_each_task:
+            for i in range(self.num_support_sets):
+                y_support_set_task[i] += i * self.num_classes_per_set
+                y_target_set_task[i] += i * self.num_classes_per_set
+
+        return x_support_set_task, x_target_set_task, y_support_set_task, y_target_set_task, x_task, y_task
 
     def set_current_iter_idx(self, idx):
-        self.seed = self.seed + (idx * self.num_continual_subtasks_per_task)
-        self.current_iter = idx * self.num_continual_subtasks_per_task
+        self.seed = self.seed + (idx * self.num_support_sets)
+        self.current_iter = idx * self.num_support_sets
 
     def __len__(self):
         return self.num_tasks_per_epoch - self.current_iter
 
     def __getitem__(self, idx):
         # print(int(idx / self.same_class_interval))
-        return self.get_set(class_seed=int(idx / self.same_class_interval), seed=self.seed + idx,
+        return self.get_set(class_seed=idx, seed=self.seed + idx,
                             num_channels=self.num_channels)
 
 

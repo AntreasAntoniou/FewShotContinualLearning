@@ -219,13 +219,6 @@ class ExperimentBuilder(object):
         y_target_set = y_target_set.view(self.batch_size, self.num_continual_subtasks_per_task,
                                          y_target_set.shape[2], y_target_set.shape[3])
 
-        # y_original = y.view(self.batch_size, self.num_continual_subtasks_per_task, self.num_classes_per_set)
-
-        if not self.overwrite_classes_in_each_task:
-            for i in range(self.num_continual_subtasks_per_task):
-                y_support_set[:, i] += i * self.num_classes_per_set
-                y_target_set[:, i] += i * self.num_classes_per_set
-
         return x_support_set, x_target_set, y_support_set, y_target_set,  x, y
 
     def save_models(self, model, epoch, state):
@@ -373,10 +366,6 @@ class ExperimentBuilder(object):
                         current_iter=self.state['current_iter'],
                         sample_idx=self.state['current_iter'])
 
-                    # print('current_iter', self.data['train'].dataset.current_iter,
-                    #       self.state['current_iter'], 'total', self.total_epochs * self.total_iter_per_epoch,
-                    #       len(self.data['train']))
-
                     better_val_model = False
                     if self.state['current_iter'] % self.total_iter_per_epoch == 0:
 
@@ -385,7 +374,7 @@ class ExperimentBuilder(object):
                         with tqdm.tqdm(total=int(self.num_evaluation_tasks / self.batch_size)) as pbar_val:
                             for val_sample_idx, val_sample in enumerate(
                                     self.data['val']):
-                                # if val_sample_idx == 1:
+
                                 val_sample = self.convert_into_continual_tasks(val_sample)
                                 val_losses, total_losses = self.evaluation_iteration(val_sample=val_sample,
                                                                                      total_losses=total_losses,

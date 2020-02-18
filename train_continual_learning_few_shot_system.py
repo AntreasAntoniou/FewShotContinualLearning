@@ -5,7 +5,7 @@ from utils.parser_utils import get_args
 args, device = get_args()
 
 from utils.dataset_tools import check_download_dataset
-from data import AddChannelsToTensor, FewShotLearningDatasetParallel
+from data import ConvertToThreeChannels, FewShotLearningDatasetParallel
 from torchvision import transforms
 from experiment_builder import ExperimentBuilder
 from few_shot_learning_system import *
@@ -29,7 +29,7 @@ check_download_dataset(args=args)
 
 if args.image_channels == 3:
     transforms = [transforms.Resize(size=(args.image_height, args.image_width)), transforms.ToTensor(),
-                  AddChannelsToTensor(),
+                  ConvertToThreeChannels(),
                   transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
 elif args.image_channels == 1:
     transforms = [transforms.Resize(size=(args.image_height, args.image_width)), transforms.ToTensor()]
@@ -46,9 +46,9 @@ train_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.datase
                         load_into_memory=args.load_into_memory, set_name='train',
                         num_tasks_per_epoch=args.total_epochs * args.total_iter_per_epoch * args.num_continual_subtasks_per_task,
                         num_channels=args.image_channels,
-                        num_continual_subtasks_per_task=args.num_continual_subtasks_per_task,
+                        num_support_sets=args.num_continual_subtasks_per_task,
                         overwrite_classes_in_each_task=args.overwrite_classes_in_each_task,
-                        same_class_interval=args.same_class_interval)
+                        class_change_interval=args.same_class_interval)
 
 val_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset_name,
                       indexes_of_folders_indicating_class=args.indexes_of_folders_indicating_class,
@@ -62,9 +62,9 @@ val_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset_
                       load_into_memory=args.load_into_memory, set_name='val',
                       num_tasks_per_epoch=600 * args.num_continual_subtasks_per_task,
                       num_channels=args.image_channels,
-                      num_continual_subtasks_per_task=args.num_continual_subtasks_per_task,
+                      num_support_sets=args.num_continual_subtasks_per_task,
                       overwrite_classes_in_each_task=args.overwrite_classes_in_each_task,
-                      same_class_interval=args.same_class_interval)
+                      class_change_interval=args.same_class_interval)
 
 test_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset_name,
                        indexes_of_folders_indicating_class=args.indexes_of_folders_indicating_class,
@@ -78,9 +78,9 @@ test_setup_dict = dict(dataset_path=args.dataset_path, dataset_name=args.dataset
                        load_into_memory=args.load_into_memory, set_name='test',
                        num_tasks_per_epoch=600 * args.num_continual_subtasks_per_task,
                        num_channels=args.image_channels,
-                       num_continual_subtasks_per_task=args.num_continual_subtasks_per_task,
+                       num_support_sets=args.num_continual_subtasks_per_task,
                        overwrite_classes_in_each_task=args.overwrite_classes_in_each_task,
-                       same_class_interval=args.same_class_interval)
+                       class_change_interval=args.same_class_interval)
 
 train_data = FewShotLearningDatasetParallel(**train_setup_dict)
 
