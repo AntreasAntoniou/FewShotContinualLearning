@@ -30,7 +30,7 @@ To execute an installation script simply run:
 ## Datasets
 We provide functionality for both SlimageNet and Omniglot. We have automated the unzipping and usage of the datasets, all one needs to do is download them from:
 
-- [SlimageNet repository](https://drive.google.com/file/d/1qQCoGoEJKUCQkk8roncWH7rhPN7aMfBr/view?usp=sharing)
+- [SlimageNet repository]()
 - [Omniglot part_1](https://github.com/brendenlake/omniglot/blob/master/python/images_background.zip)
 - [Omniglot part_2](https://github.com/brendenlake/omniglot/blob/master/python/images_evaluation.zip)
 

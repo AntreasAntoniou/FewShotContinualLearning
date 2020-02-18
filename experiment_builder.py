@@ -338,8 +338,6 @@ class ExperimentBuilder(object):
 
             while (self.state['current_iter'] < (self.total_epochs * self.total_iter_per_epoch)) and (
                     self.evaluate_on_test_set_only == False):
-                # print('current_iter', self.state['current_iter'], 'total',
-                #       self.total_epochs * self.total_iter_per_epoch, len(self.data['train']))
 
                 for idx, train_sample in enumerate(self.data['train']):
                     train_sample = self.convert_into_continual_tasks(train_sample)
@@ -357,7 +355,7 @@ class ExperimentBuilder(object):
 
                         total_losses = dict()
                         val_losses = dict()
-                        with tqdm.tqdm(total=int(self.num_evaluation_tasks / self.batch_size)) as pbar_val:
+                        with tqdm.tqdm(total=len(self.data['val'])) as pbar_val:
                             for val_sample_idx, val_sample in enumerate(
                                     self.data['val']):
 
