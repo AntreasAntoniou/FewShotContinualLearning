@@ -954,54 +954,6 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         task_name_params = self.get_inner_loop_parameter_dict(self.named_parameters())
 
-        if self.num_target_set_steps > 0:
-            self.dense_net_embedding = SqueezeExciteDenseNetEmbeddingSmallNetwork(
-                im_shape=torch.cat([x_support_set, x_target_set], dim=0).shape, num_filters=self.num_filters,
-                num_blocks_per_stage=self.num_blocks_per_stage,
-                num_stages=self.num_stages, average_pool_outputs=False, dropout_rate=self.dropout_rate,
-                output_spatial_dimensionality=self.output_spatial_dimensionality, use_channel_wise_attention=True)
-
-            task_features = self.dense_net_embedding.forward(
-                x=torch.cat([x_support_set, x_target_set], dim=0), dropout_training=True)
-            task_features = task_features.squeeze()
-            encoded_x = task_features
-            support_set_features = F.avg_pool2d(encoded_x[:num_support_samples], encoded_x.shape[-1]).squeeze()
-
-            preds, penultimate_features_x = self.classifier.forward(x=torch.cat([x_support_set, x_target_set], dim=0),
-                                                                    num_step=0, return_features=True)
-
-            self.task_relational_network = None
-            relational_embedding_shape = None
-
-            x_support_set_task = F.avg_pool2d(
-                encoded_x[:self.num_classes_per_set * (self.num_samples_per_support_class)],
-                encoded_x.shape[-1]).squeeze()
-            x_target_set_task = F.avg_pool2d(
-                encoded_x[self.num_classes_per_set * (self.num_samples_per_support_class):],
-                encoded_x.shape[-1]).squeeze()
-            x_support_set_classifier_features = F.avg_pool2d(penultimate_features_x[
-                                                             :self.num_classes_per_set * (
-                                                                 self.num_samples_per_support_class)],
-                                                             penultimate_features_x.shape[-2]).squeeze()
-            x_target_set_classifier_features = F.avg_pool2d(
-                penultimate_features_x[self.num_classes_per_set * (self.num_samples_per_support_class):],
-                penultimate_features_x.shape[-2]).squeeze()
-
-            self.critic_network = CriticNetwork(
-                task_embedding_shape=relational_embedding_shape,
-                num_classes_per_set=self.num_classes_per_set,
-                support_set_feature_shape=x_support_set_task.shape,
-                target_set_feature_shape=x_target_set_task.shape,
-                support_set_classifier_pre_last_features=x_support_set_classifier_features.shape,
-                target_set_classifier_pre_last_features=x_target_set_classifier_features.shape,
-
-                num_target_samples=self.num_samples_per_target_class,
-                num_support_samples=self.num_samples_per_support_class,
-                logit_shape=preds[self.num_classes_per_set * (self.num_samples_per_support_class):].shape,
-                support_set_label_shape=(
-                    self.num_classes_per_set * (self.num_samples_per_support_class), self.num_classes_per_set),
-                conditional_information=self.conditional_information)
-
         self.inner_loop_optimizer = LSLRGradientDescentLearningRule(
             total_num_inner_loop_steps=2 * (
                     self.num_support_sets * self.num_support_set_steps) + self.num_target_set_steps + 1,
