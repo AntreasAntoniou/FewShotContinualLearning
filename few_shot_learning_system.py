@@ -1190,21 +1190,8 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
                                                                   current_step_idx=step_idx)
                 step_idx += 1
 
-            if self.num_target_set_steps > 0:
-                post_update_outputs = self.net_forward(
-                    x=x_target_set_task,
-                    y=y_target_set_task, weights=names_weights_copy,
-                    backup_running_statistics=False, training=True,
-                    num_step=step_idx,
-                    return_features=True)
-                post_update_loss, post_update_target_preds, post_updated_target_features = post_update_outputs[
-                                                                                               'loss'], \
-                                                                                           post_update_outputs[
-                                                                                               'preds'], \
-                                                                                           post_update_outputs[
-                                                                                               'features']
-            else:
-                post_update_loss, post_update_target_preds, post_updated_target_features = target_set_loss, \
+
+            post_update_loss, post_update_target_preds, post_updated_target_features = target_set_loss, \
                                                                                            target_outputs['preds'], \
                                                                                            target_outputs[
                                                                                                'features']
