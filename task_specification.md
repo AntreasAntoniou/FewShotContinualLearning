@@ -37,7 +37,15 @@ using the target set metrics as the task-level generalization metrics. To obtain
 should be evaluated on 600 unique tasks and then take the mean and standard deviation of both the accuracy and cross-entropy performance of the model.
 These should be used as generalization measures to compare the model to other models.
 
-2. Across-Task Memory (ATM): Since the knowledge storage vectors that store support set knowledge have unrestricted memory, we also incorporate
+2. Across-Task Memory (**ATM**): Since the knowledge storage vectors that store support set knowledge have unrestricted memory, we also incorporate
 a metric that explicitly measures how memory efficient a certain model is, which can help differentiate between models of equal generalization performance.
-This measure can be computed by $\dfrac{M}{T}$ where *M* is the total knowledge memory size across a whole task, and 
+This measure can be computed by <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mstyle displaystyle="true" scriptlevel="0">
+    <mfrac>
+      <mi>M</mi>
+      <mi>T</mi>
+    </mfrac>
+  </mstyle>
+</math> 
+where *M* is the total knowledge memory size across a whole task, and 
 *T* is the total size of all samples in all the support sets within a task.  
