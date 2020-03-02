@@ -9,7 +9,7 @@ The support sets are controlled by the following hyperparameters:
 1. Number of Support Sets (**NSS**): The number of support sets within a continual task.
 2. Number of Classes Per Support Set (**N**): The number of classes within each support set.
 3. Number of Samples Per Support Set Class (**K**): The number of data-points to be sampled for each class in the support set.
-4. Number of Samples Per Target Set Class (**J**): The number of data-points to be sampled for each class in the target set. The number of classes in a target set is given by  $\dfrac{NSS\times N}{CCI}$
+4. Number of Samples Per Target Set Class (**J**): The number of data-points to be sampled for each class in the target set. The number of classes in a target set is given by  <img src="https://render.githubusercontent.com/render/math?math=$\dfrac{NSS\times N}{CCI}$">
 5. Class Change Interval (**CCI**): Assuming a task has NSS support sets, CCI defines the number of support sets 
 sampled with the same class source, before that class source is resampled. This allows fine control of the type of task that will be generated.
 6. Overwrite: A boolean variable that describes whether classes sampled at each support set will overwrite the class labels of the previously sampled support set (TRUE), or whether they will assigned new unique labels (FALSE).
@@ -39,13 +39,6 @@ These should be used as generalization measures to compare the model to other mo
 
 2. Across-Task Memory (**ATM**): Since the knowledge storage vectors that store support set knowledge have unrestricted memory, we also incorporate
 a metric that explicitly measures how memory efficient a certain model is, which can help differentiate between models of equal generalization performance.
-This measure can be computed by <math xmlns="http://www.w3.org/1998/Math/MathML">
-  <mstyle displaystyle="true" scriptlevel="0">
-    <mfrac>
-      <mi>M</mi>
-      <mi>T</mi>
-    </mfrac>
-  </mstyle>
-</math> 
+This measure can be computed by $\dfrac{M}{T}$
 where *M* is the total knowledge memory size across a whole task, and 
 *T* is the total size of all samples in all the support sets within a task.  
