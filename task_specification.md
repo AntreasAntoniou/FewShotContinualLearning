@@ -34,7 +34,7 @@ previously unseen samples. A generalization measure can be obtained by using the
 1. Test Generalization Performance: A proposed model should be evaluated on the test sets of Omniglot and SlimageNet, on all of the task
 types of interest. This is done by presenting the model with a number of previously unseen continual tasks sampled from these test sets, and then
 using the target set metrics as the task-level generalization metrics. To obtain a measure of generalization across the whole test set the model
-should be evaluated on 600 unique tasks and then take the mean and standard deviation of both the accuracy and cross-entropy performance of the model.
+should be evaluated on **600** unique tasks and then take the mean and standard deviation of both the accuracy and cross-entropy performance of the model.
 These should be used as generalization measures to compare the model to other models.
 
 2. Across-Task Memory (**ATM**): Since the knowledge storage vectors that store support set knowledge have unrestricted memory, we also incorporate
@@ -42,3 +42,11 @@ a metric that explicitly measures how memory efficient a certain model is, which
 This measure can be computed by <img src="https://render.githubusercontent.com/render/math?math=$\dfrac{M}{T}$"> 
 where *M* is the total knowledge memory size across a whole task, and 
 *T* is the total size of all samples in all the support sets within a task.  
+
+## Rules
+
+1. A task with CCI=1, NSS=1 will generate the same task type no matter what Overwrite is set to. 
+2. When classes are resampled for a new support set, assuming the CCI interval has been reached, the classes should be unique classes that have not appeared in any of the preceeding support sets within the current continual task.
+3. When new samples are sampled, they should be unique samples, that have not been used in any other support sets of the current continual task.
+4. For SlimageNet the splits should be the exact splits that appear within train, val, and test in https://zenodo.org/record/3672132.
+5. The smaller the ATM of a given model the more memory efficient it is. Maximal efficiency is achieved at 0, where no memory is used, and minimum efficiency is reached at infinity, where the model has infinite memory. A model that can store the whole dataset it observed will have ATM=1, whereas a model that stores 10% of the information in a data-point will have an ATM=0.1.
