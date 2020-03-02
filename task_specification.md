@@ -39,6 +39,6 @@ These should be used as generalization measures to compare the model to other mo
 
 2. Across-Task Memory (**ATM**): Since the knowledge storage vectors that store support set knowledge have unrestricted memory, we also incorporate
 a metric that explicitly measures how memory efficient a certain model is, which can help differentiate between models of equal generalization performance.
-This measure can be computed by $\dfrac{M}{T}$
+This measure can be computed by <img src="https://render.githubusercontent.com/render/math?math=$\dfrac{M}{T}$"> 
 where *M* is the total knowledge memory size across a whole task, and 
 *T* is the total size of all samples in all the support sets within a task.  
