@@ -22,8 +22,9 @@ elif Overwrite==TRUE:
 ```
 A task is sampled using the following algorithm:
 
-![alt text](https://github.com/AntreasAntoniou/FewShotContinualLearning/blob/master/materials/task_sampling_algorithm.png)
-
+<p align="center">
+  <img width="460" height="300" src="https://github.com/AntreasAntoniou/FewShotContinualLearning/blob/master/materials/task_sampling_algorithm.png">
+</p>
 
 
 ## Data Flow Dynamics
