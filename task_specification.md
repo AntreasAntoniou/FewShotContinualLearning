@@ -22,7 +22,7 @@ elif Overwrite==TRUE:
 ```
 A task is sampled using the following algorithm:
 Inline-style: 
-![alt text](https://github.com/AntreasAntoniou/FewShotContinualLearning/edit/master/materials/task_sampling_algorithm.png)
+![alt text](https://github.com/AntreasAntoniou/FewShotContinualLearning/blob/master/materials/task_sampling_algorithm.png)
 
 
 
