@@ -20,6 +20,12 @@ if Overwrite==FALSE:
 elif Overwrite==TRUE:
     support set 1 class labels: 0, 1, 2, 3, 4
 ```
+A task is sampled using the following algorithm:
+Inline-style: 
+![alt text](https://github.com/AntreasAntoniou/FewShotContinualLearning/edit/master/materials/task_sampling_algorithm.png)
+
+
+
 ## Data Flow Dynamics
 
 1. The model can only access one support set at a time for the purposes of knowledge extraction. 
@@ -42,6 +48,8 @@ a metric that explicitly measures how memory efficient a certain model is, which
 This measure can be computed by <img src="https://render.githubusercontent.com/render/math?math=$\dfrac{M}{T}$"> 
 where *M* is the total knowledge memory size across a whole task, and 
 *T* is the total size of all samples in all the support sets within a task.  
+
+3. Computational Cost/Inference Memory: This metric measures the computational expense of the joint learner + model operations, as well as the memory footprint. This memory footprint is different in ATM, as ATM measures how much information are kept from each task when the next task is observed, whereas the inference memory footprint measures the memory footprint that the model itself needs to execute one cycle of inference + learning. Both of these costs can be approximated as the total amount of MAC (Multiply Accumulate) operations that a given model executes. Computing the total number of MAC operations  
 
 ## Rules
 
