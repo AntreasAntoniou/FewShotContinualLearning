@@ -50,7 +50,7 @@ This measure can be computed by <img src="https://render.githubusercontent.com/r
 where *M* is the total knowledge memory size across a whole task, and 
 *T* is the total size of all samples in all the support sets within a task.  
 
-3. Computational Cost/Inference Memory: This metric measures the computational expense of the joint learner + model operations, as well as the memory footprint. This memory footprint is different in ATM, as ATM measures how much information are kept from each task when the next task is observed, whereas the inference memory footprint measures the memory footprint that the model itself needs to execute one cycle of inference + learning. Both of these costs can be approximated as the total amount of MAC (Multiply Accumulate) operations that a given model executes. Computing the total number of MAC operations  
+3. Computational Cost/Inference Memory: This metric measures the computational expense of the joint learner + model operations, as well as the memory footprint. This memory footprint is different in ATM, as ATM measures how much information are kept from each task when the next task is observed, whereas the inference memory footprint measures the memory footprint that the model itself needs to execute one cycle of inference + learning. Both of these costs can be approximated as the total amount of MAC (Multiply Accumulate) operations that a given model executes. 
 
 ## Rules
 
