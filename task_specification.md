@@ -21,7 +21,7 @@ elif Overwrite==TRUE:
     support set 1 class labels: 0, 1, 2, 3, 4
 ```
 A task is sampled using the following algorithm:
-Inline-style: 
+
 ![alt text](https://github.com/AntreasAntoniou/FewShotContinualLearning/blob/master/materials/task_sampling_algorithm.png)
 
 
