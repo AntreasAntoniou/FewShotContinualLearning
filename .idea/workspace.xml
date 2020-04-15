@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="9687ec3a-f1f2-49bb-b6c4-7187e9f3270f" name="Default Changelist" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectId" id="1PCYqK4kJZo1hH5Bfum50N3uPNh" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+  </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/utils" />
+      <recent name="$PROJECT_DIR$/backups" />
+      <recent name="$PROJECT_DIR$/backup_templates" />
+      <recent name="$PROJECT_DIR$/backup_template_scripts" />
+      <recent name="$PROJECT_DIR$" />
+    </key>
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/utils" />
+      <recent name="$PROJECT_DIR$/script_generation_tools" />
+      <recent name="$PROJECT_DIR$/datasets" />
+      <recent name="$PROJECT_DIR$/experiment_template_config" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python.generate_scripts">
+    <configuration name="coin_toss" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="FewShotContinualLearning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/coin_toss.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="generate_configs" type="PythonConfigurationType" factoryName="Python">
+      <module name="FewShotContinualLearning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="$USER_HOME$/miniconda3/envs/mlp_dev/bin/python" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/script_generation_tools" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/script_generation_tools/generate_configs.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="generate_jade_scripts (1)" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="FewShotContinualLearning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/script_generation_tools" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/script_generation_tools/generate_jade_scripts.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="generate_jade_scripts" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="FewShotContinualLearning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="$USER_HOME$/miniconda3/envs/mlp_dev/bin/python" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/script_generation_tools" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/script_generation_tools/generate_scripts.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="generate_scripts" type="PythonConfigurationType" factoryName="Python">
+      <module name="FewShotContinualLearning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="$USER_HOME$/miniconda3/envs/mlp_dev/bin/python" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/script_generation_tools" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/script_generation_tools/generate_scripts.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="high_end_maml_backbone" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="FewShotContinualLearning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/high_end_maml_backbone.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="remove_single_file" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="FewShotContinualLearning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/remove_single_file.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Python.generate_configs" />
+      <item itemvalue="Python.generate_scripts" />
+      <item itemvalue="Python.coin_toss" />
+      <item itemvalue="Python.generate_jade_scripts (1)" />
+      <item itemvalue="Python.generate_jade_scripts" />
+      <item itemvalue="Python.high_end_maml_backbone" />
+      <item itemvalue="Python.remove_single_file" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.generate_jade_scripts (1)" />
+        <item itemvalue="Python.remove_single_file" />
+        <item itemvalue="Python.coin_toss" />
+        <item itemvalue="Python.generate_jade_scripts" />
+        <item itemvalue="Python.high_end_maml_backbone" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="9687ec3a-f1f2-49bb-b6c4-7187e9f3270f" name="Default Changelist" comment="" />
+      <created>1540064463796</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1540064463796</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="oldMeFiltersMigrated" value="true" />
+  </component>
+  <component name="WindowStateProjectService">
+    <state x="957" y="524" key="#com.intellij.fileTypes.FileTypeChooser" timestamp="1582040116711">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state x="957" y="524" key="#com.intellij.fileTypes.FileTypeChooser/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582040116711" />
+    <state x="1047" y="468" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog" timestamp="1582039765824">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state x="1047" y="468" key="#com.intellij.refactoring.safeDelete.UnsafeUsagesDialog/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582039765824" />
+    <state x="988" y="336" key="#generate_configs" timestamp="1579303118522">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state x="988" y="336" key="#generate_configs/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579303118522" />
+    <state x="988" y="336" key="#generate_jade_scripts" timestamp="1579303132836">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state x="988" y="336" key="#generate_jade_scripts/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579303132836" />
+    <state x="988" y="334" key="#generate_scripts" timestamp="1582037966076">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state x="988" y="334" key="#generate_scripts/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582037966076" />
+    <state x="1097" y="499" key="FileChooserDialogImpl" timestamp="1582555547622">
+      <screen x="59" y="24" width="2501" height="1439" />
+    </state>
+    <state x="1097" y="491" key="FileChooserDialogImpl/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579468492055" />
+    <state x="1097" y="499" key="FileChooserDialogImpl/59.24.2501.1439/2560.0.2560.1440@59.24.2501.1439" timestamp="1582555547622" />
+    <state width="2478" height="256" key="GridCell.Tab.0.bottom" timestamp="1586986032751">
+      <screen x="59" y="24" width="2501" height="1439" />
+    </state>
+    <state width="2478" height="256" key="GridCell.Tab.0.bottom/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582143719001" />
+    <state width="2478" height="256" key="GridCell.Tab.0.bottom/59.24.2501.1439/2560.0.2560.1440@2560.0.2560.1440" timestamp="1586460811549" />
+    <state width="2478" height="256" key="GridCell.Tab.0.bottom/59.24.2501.1439/2560.0.2560.1440@59.24.2501.1439" timestamp="1586986032751" />
+    <state width="2478" height="256" key="GridCell.Tab.0.center" timestamp="1586986032751">
+      <screen x="59" y="24" width="2501" height="1439" />
+    </state>
+    <state width="2478" height="256" key="GridCell.Tab.0.center/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582143719001" />
+    <state width="2478" height="256" key="GridCell.Tab.0.center/59.24.2501.1439/2560.0.2560.1440@2560.0.2560.1440" timestamp="1586460811548" />
+    <state width="2478" height="256" key="GridCell.Tab.0.center/59.24.2501.1439/2560.0.2560.1440@59.24.2501.1439" timestamp="1586986032751" />
+    <state width="2478" height="256" key="GridCell.Tab.0.left" timestamp="1586986032751">
+      <screen x="59" y="24" width="2501" height="1439" />
+    </state>
+    <state width="2478" height="256" key="GridCell.Tab.0.left/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582143719001" />
+    <state width="2478" height="256" key="GridCell.Tab.0.left/59.24.2501.1439/2560.0.2560.1440@2560.0.2560.1440" timestamp="1586460811548" />
+    <state width="2478" height="256" key="GridCell.Tab.0.left/59.24.2501.1439/2560.0.2560.1440@59.24.2501.1439" timestamp="1586986032751" />
+    <state width="2478" height="256" key="GridCell.Tab.0.right" timestamp="1586986032751">
+      <screen x="59" y="24" width="2501" height="1439" />
+    </state>
+    <state width="2478" height="256" key="GridCell.Tab.0.right/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582143719001" />
+    <state width="2478" height="256" key="GridCell.Tab.0.right/59.24.2501.1439/2560.0.2560.1440@2560.0.2560.1440" timestamp="1586460811548" />
+    <state width="2478" height="256" key="GridCell.Tab.0.right/59.24.2501.1439/2560.0.2560.1440@59.24.2501.1439" timestamp="1586986032751" />
+    <state width="2455" height="506" key="GridCell.Tab.1.bottom" timestamp="1579285304809">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state width="2455" height="506" key="GridCell.Tab.1.bottom/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579285304809" />
+    <state width="2455" height="506" key="GridCell.Tab.1.center" timestamp="1579285304809">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state width="2455" height="506" key="GridCell.Tab.1.center/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579285304809" />
+    <state width="2455" height="506" key="GridCell.Tab.1.left" timestamp="1579285304809">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state width="2455" height="506" key="GridCell.Tab.1.left/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579285304809" />
+    <state width="2455" height="506" key="GridCell.Tab.1.right" timestamp="1579285304809">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state width="2455" height="506" key="GridCell.Tab.1.right/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579285304809" />
+    <state x="803" y="354" key="SettingsEditor" timestamp="1579285976245">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state x="803" y="354" key="SettingsEditor/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579285976245" />
+    <state x="970" y="555" key="com.intellij.ide.util.TipDialog" timestamp="1584470280701">
+      <screen x="59" y="24" width="2501" height="1439" />
+    </state>
+    <state x="970" y="547" key="com.intellij.ide.util.TipDialog/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1581985220260" />
+    <state x="970" y="555" key="com.intellij.ide.util.TipDialog/59.24.2501.1439/2560.0.2560.1440@59.24.2501.1439" timestamp="1584470280701" />
+    <state x="876" y="417" width="918" height="602" key="find.popup" timestamp="1582123020598">
+      <screen x="59" y="24" width="2501" height="1416" />
+    </state>
+    <state x="876" y="417" width="918" height="602" key="find.popup/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1582123020598" />
+    <state x="3495" y="307" width="688" height="691" key="search.everywhere.popup" timestamp="1584932369909">
+      <screen x="2560" y="0" width="2560" height="1440" />
+    </state>
+    <state x="972" y="326" width="672" height="678" key="search.everywhere.popup/59.24.2501.1416/2560.0.2560.1440@59.24.2501.1416" timestamp="1579287427180" />
+    <state x="3495" y="307" width="688" height="691" key="search.everywhere.popup/59.24.2501.1439/2560.0.2560.1440@2560.0.2560.1440" timestamp="1584932369909" />
+    <state x="972" y="331" width="672" height="690" key="search.everywhere.popup/59.24.2501.1439/2560.0.2560.1440@59.24.2501.1439" timestamp="1583157113345" />
+  </component>
+</project>
