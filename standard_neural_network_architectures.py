@@ -20,6 +20,7 @@ class Conv2dNormLeakyReLU(nn.Module):
         self.dilation = dilation
         self.weight_attention = weight_attention
         self.groups = groups
+        self.num_mac = None
         self.layer_dict = nn.ModuleDict()
         self.build_network()
 
@@ -648,10 +649,16 @@ class CriticNetwork(nn.Module):
         out = self.layer_dict['linear_0'](out)
         out = F.leaky_relu(out)
 
+        print(out.shape)
+
         out = self.layer_dict['linear_1'](out)
         out = F.leaky_relu(out)
 
+        print(out.shape)
+
         out = self.layer_dict['linear_preds'](out)
+
+        print(out.shape)
 
         if return_sum:
             out = out.sum()
@@ -729,6 +736,7 @@ class TaskRelationalEmbedding(nn.Module):
         prev_shape = out.shape
         out = out.view(out.shape[0] * out.shape[1], out.shape[-1])
         for idx_layer in range(3):
+            print(idx_layer, out.shape)
             out = F.relu(self.block_dict['g_fcc_{}'.format(idx_layer)].forward(out))
 
         # reshape again and sum
@@ -780,7 +788,7 @@ class RelationalModule(nn.Module):
         out = torch.cat([x_i, x_j], 2)  # (h*wxh*wx2*c)
 
         out = out.view(out.shape[0] * out.shape[1], out.shape[2])
-        for idx_layer in range(3):
+        for idx_layer in range(2):
             self.block_dict['g_fcc_{}'.format(idx_layer)] = nn.Linear(out.shape[1], out_features=32)
             out = F.leaky_relu(self.block_dict['g_fcc_{}'.format(idx_layer)].forward(out))
 

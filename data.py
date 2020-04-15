@@ -218,8 +218,8 @@ class FewShotLearningDatasetParallel(Dataset):
         return x_support_set_task, x_target_set_task, y_support_set_task, y_target_set_task, x_task, y_task
 
     def set_current_iter_idx(self, idx):
-        self.seed = self.seed + (idx * self.num_support_sets)
-        self.current_iter = idx * self.num_support_sets
+        self.seed = self.seed + (idx)
+        self.current_iter = idx
 
     def __len__(self):
         return self.num_tasks_per_epoch - self.current_iter

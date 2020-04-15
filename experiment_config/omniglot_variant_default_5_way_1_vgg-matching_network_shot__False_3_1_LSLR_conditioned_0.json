@@ -36,7 +36,7 @@
   "max_pooling": true,
   "per_step_bn_statistics": true,
   "learnable_batch_norm_momentum": false,
-  "load_into_memory": false,
+  "load_into_memory": true,
   "inner_loop_optimizer_type": "lslr",
   "init_learning_rate": 0.01,
   "learnable_bn_gamma": true,

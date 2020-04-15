@@ -12,7 +12,6 @@ maml_experiment_script = 'train_continual_learning_few_shot_system.py'
 
 prefix = 'few_shot'
 local_script_dir = "../experiment_scripts"
-cluster_script_dir = "../cluster_experiment_scripts"
 
 for subdir, dir, files in os.walk(local_script_dir):
     for file in files:
@@ -20,20 +19,8 @@ for subdir, dir, files in os.walk(local_script_dir):
             filepath = os.path.join(subdir, file)
             os.remove(filepath)
 
-for subdir, dir, files in os.walk(cluster_script_dir):
-    for file in files:
-        if file.endswith('.sh'):
-            filepath = os.path.join(subdir, file)
-            os.remove(filepath)
-
-
 if not os.path.exists(local_script_dir):
     os.makedirs(local_script_dir)
-
-if not os.path.exists(cluster_script_dir):
-    os.makedirs(cluster_script_dir)
-
-
 
 def load_template(filepath):
     with open(filepath, mode='r') as filereader:

@@ -6,7 +6,6 @@ import tqdm
 
 from utils.storage import build_experiment_folder, save_statistics, save_to_json
 
-
 class ExperimentBuilder(object):
     def __init__(self, data_dict, model, experiment_name, continue_from_epoch, max_models_to_save,
                  total_iter_per_epoch, total_epochs, num_evaluation_tasks, batch_size, evaluate_on_test_set_only,
@@ -341,6 +340,7 @@ class ExperimentBuilder(object):
 
                 for idx, train_sample in enumerate(self.data['train']):
                     train_sample = self.convert_into_continual_tasks(train_sample)
+
                     train_losses, total_losses, self.state['current_iter'] = self.train_iteration(
                         train_sample=train_sample,
                         total_losses=self.total_losses,

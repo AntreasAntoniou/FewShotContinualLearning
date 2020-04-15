@@ -37,8 +37,6 @@ def check_download_dataset(dataset_name):
             zip_directory = "{}.tar.bz2".format(os.path.join(os.environ['DATASET_DIR'], datasets[dataset_idx]))
             if not os.path.exists(zip_directory):
                 print("Not found zip file, downloading..", zip_directory)
-                # download_dataset(dataset_name="{}.tar.bz2".format(datasets[dataset_idx]),
-                #                  path_to_save=os.environ['DATASET_DIR'])
                 return FileNotFoundError('Dataset is missing from the datasets folder, please download datasets and place '
                                          'them in the datasets folder as specified in the README.md file')
 
@@ -60,7 +58,7 @@ def check_download_dataset(dataset_name):
                 total_files == 100 * 600 and 'mini_imagenet' in datasets[dataset_idx]) or (
                 total_files == 11788 and "cub" in datasets[dataset_idx]) or (
                 total_files == 779165 and "tiered_imagenet" in datasets[dataset_idx]) or (
-                total_files == 201000 and "SlimageNet64" in datasets[dataset_idx]):
+                total_files == 200000 and "SlimageNet64" in datasets[dataset_idx]):
             print("file count is correct")
             done = True
         else:

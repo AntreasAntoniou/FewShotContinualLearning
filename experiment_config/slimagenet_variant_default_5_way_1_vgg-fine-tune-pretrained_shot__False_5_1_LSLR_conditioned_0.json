@@ -34,7 +34,7 @@
 
   "max_pooling": true,
   "per_step_bn_statistics": true,
-  "load_into_memory": false,
+  "load_into_memory": true,
   "save_preds": false,
   "use_augmentations": false,
   "inner_loop_optimizer_type": "lslr",

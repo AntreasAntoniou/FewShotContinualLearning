@@ -21,6 +21,8 @@ def extract_top_level_dict(current_dict):
     for key in current_dict.keys():
         name = key.replace("layer_dict.", "")
         name = name.replace("layer_dict.", "")
+        name = name.replace("block_dict.", "")
+        name = name.replace("module-", "")
         top_level = name.split(".")[0]
         sub_level = ".".join(name.split(".")[1:])
 
@@ -117,7 +119,7 @@ class MetaConv2dLayer(nn.Module):
         """
         super(MetaConv2dLayer, self).__init__()
         num_filters = out_channels
-        self.stride = int(stride)
+        self.stride = stride
         self.padding = int(padding)
         self.dilation_rate = int(dilation_rate)
         self.use_bias = use_bias
@@ -151,7 +153,6 @@ class MetaConv2dLayer(nn.Module):
             else:
                 weight = self.weight
                 bias = None
-
         out = F.conv2d(input=x, weight=weight, bias=bias, stride=self.stride,
                        padding=self.padding, dilation=self.dilation_rate, groups=self.groups)
         return out
@@ -395,6 +396,7 @@ class MetaConvNormLayerLeakyReLU(nn.Module):
         conv_params = None
 
         if params is not None:
+            params = {key: value for key, value in params.items()}
             params = extract_top_level_dict(current_dict=params)
             conv_params = params['conv']
 
@@ -508,7 +510,7 @@ class VGGActivationNormNetwork(nn.Module):
         param_dict = dict()
 
         if params is not None:
-            params = {key: value for key, value in params.items()}
+            params = {key: value[0] for key, value in params.items()}
             # print([key for key, value in param_dict.items()])
             param_dict = extract_top_level_dict(current_dict=params)
 
@@ -643,6 +645,7 @@ class FCCActivationNormNetwork(nn.Module):
         param_dict = dict()
 
         if params is not None:
+            params = {key: value[0] for key, value in params.items()}
             param_dict = extract_top_level_dict(current_dict=params)
 
         for name, param in list(self.layer_dict.named_parameters()) + list(self.layer_dict.items()):
@@ -869,7 +872,7 @@ class VGGActivationNormNetworkWithAttention(nn.Module):
         param_dict = dict()
 
         if params is not None:
-            params = {key: value for key, value in params.items()}
+            params = {key: value[0] for key, value in params.items()}
             # print([key for key, value in param_dict.items()])
             param_dict = extract_top_level_dict(current_dict=params)
 
