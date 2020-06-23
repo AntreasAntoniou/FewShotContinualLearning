@@ -1,4 +1,5 @@
 .idea/*
 datasets/*
+run
 cluster_experiment_scripts/*
-__pycache__/*
+__pycache__
