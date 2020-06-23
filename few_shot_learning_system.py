@@ -68,6 +68,11 @@ class MAMLFewShotClassifier(nn.Module):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+        self.device = torch.device('cpu')
+
+        if torch.cuda.is_available():
+          self.device = torch.cuda.current_device()
+
         self.clip_grads = True
         self.rng = set_torch_seed(seed=seed)
         self.build_module()
@@ -86,7 +91,7 @@ class MAMLFewShotClassifier(nn.Module):
                                                               T_max=self.total_epochs,
                                                               eta_min=0.001)
         print('min learning rate'.self.min_learning_rate)
-        self.to(torch.cuda.current_device())
+        self.to(self.device)
 
         print("Inner Loop parameters")
         num_params = 0
@@ -137,7 +142,7 @@ class MAMLFewShotClassifier(nn.Module):
             loss_weights[-1] + (self.current_epoch * (self.number_of_training_steps_per_iter - 1) * decay_rate),
             1.0 - ((self.number_of_training_steps_per_iter - 1) * min_value_for_non_final_losses))
         loss_weights[-1] = curr_value
-        loss_weights = torch.Tensor(loss_weights).to(device=torch.cuda.current_device())
+        loss_weights = torch.Tensor(loss_weights).to(device=self.device)
         return loss_weights
 
     def apply_inner_loop_update(self, loss, names_weights_copy, use_second_order, current_step_idx):
@@ -180,7 +185,7 @@ class MAMLFewShotClassifier(nn.Module):
             if param.requires_grad:
                 if all([item not in name for item in exclude_strings]):
                     if "norm_layer" not in name and 'bn' not in name and 'prelu' not in name:
-                        param_dict[name] = param.to(device=torch.cuda.current_device())
+                        param_dict[name] = param.to(device=self.device)
         return param_dict
 
     def net_forward(self, x, y, weights, backup_running_statistics, training, num_step,
@@ -472,10 +477,10 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         if torch.cuda.is_available():
 
             if torch.cuda.device_count() > 1:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
                 self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
             else:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
 
             self.device = torch.cuda.current_device()
 
@@ -541,7 +546,7 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         the MSL (Multi Step Loss) mechanism.
         """
         loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
-                                  device=torch.cuda.current_device()) / (
+                                  device=self.device) / (
                                self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
                 self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
@@ -549,7 +554,7 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
         loss_weights = torch.max(input=loss_weights,
-                                 other=torch.ones(loss_weights.shape, device=torch.cuda.current_device()) * 0.001)
+                                 other=torch.ones(loss_weights.shape, device=self.device) * 0.001)
 
         loss_weights[-1] = 1. - torch.sum(loss_weights[:-1])
 
@@ -578,9 +583,9 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         per_task_preds = []
         num_losses = 2
-        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(torch.cuda.current_device())
+        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(self.device)
         step_magnitude = (1.0 / num_losses) / self.total_epochs
-        current_epoch_step_magnitude = torch.ones(1).to(torch.cuda.current_device()) * (step_magnitude * (epoch + 1))
+        current_epoch_step_magnitude = torch.ones(1).to(self.device) * (step_magnitude * (epoch + 1))
         importance_vector[0] = importance_vector[0] - current_epoch_step_magnitude
         importance_vector[1] = importance_vector[1] + current_epoch_step_magnitude
         pre_target_loss_update_loss = []
@@ -606,10 +611,10 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
             c, h, w = x_target_set_task.shape[-3:]
 
-            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
-            y_target_set_task = y_target_set_task.view(-1).to(torch.cuda.current_device())
-            x_support_set_task = x_support_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
-            y_support_set_task = y_support_set_task.to(torch.cuda.current_device())
+            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(self.device)
+            y_target_set_task = y_target_set_task.view(-1).to(self.device)
+            x_support_set_task = x_support_set_task.view(-1, c, h, w).to(self.device)
+            y_support_set_task = y_support_set_task.to(self.device)
 
             image_embedding = self.dense_net_embedding.forward(
                 x=torch.cat([x_support_set_task, x_target_set_task], dim=0), dropout_training=True)
@@ -996,10 +1001,10 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         if torch.cuda.is_available():
 
             if torch.cuda.device_count() > 1:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
                 self.classifier = nn.DataParallel(module=self.classifier)
             else:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
 
             self.device = torch.cuda.current_device()
 
@@ -1065,7 +1070,7 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         the MSL (Multi Step Loss) mechanism.
         """
         loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
-                                  device=torch.cuda.current_device()) / (
+                                  device=self.device) / (
                                self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
                 self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
@@ -1073,7 +1078,7 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
         loss_weights = torch.max(input=loss_weights,
-                                 other=torch.ones(loss_weights.shape, device=torch.cuda.current_device()) * 0.001)
+                                 other=torch.ones(loss_weights.shape, device=self.device) * 0.001)
 
         loss_weights[-1] = 1. - torch.sum(loss_weights[:-1])
 
@@ -1102,9 +1107,9 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         per_task_preds = []
         num_losses = 2
-        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(torch.cuda.current_device())
+        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(self.device)
         step_magnitude = (1.0 / num_losses) / self.total_epochs
-        current_epoch_step_magnitude = torch.ones(1).to(torch.cuda.current_device()) * (step_magnitude * (epoch + 1))
+        current_epoch_step_magnitude = torch.ones(1).to(self.device) * (step_magnitude * (epoch + 1))
 
         importance_vector[0] = importance_vector[0] - current_epoch_step_magnitude
         importance_vector[1] = importance_vector[1] + current_epoch_step_magnitude
@@ -1121,8 +1126,8 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
                               y_target_set)):
 
             c, h, w = x_target_set_task.shape[-3:]
-            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
-            y_target_set_task = y_target_set_task.view(-1).to(torch.cuda.current_device())
+            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(self.device)
+            y_target_set_task = y_target_set_task.view(-1).to(self.device)
             target_set_per_step_loss = []
             importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
             step_idx = 0
@@ -1138,8 +1143,8 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
                     [num_devices] + [1 for i in range(len(value.shape))]) for
                 name, value in names_weights_copy.items()}
                 # in the future try to adapt the features using a relational component
-                x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(torch.cuda.current_device())
-                y_support_set_sub_task = y_support_set_sub_task.view(-1).to(torch.cuda.current_device())
+                x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(self.device)
+                y_support_set_sub_task = y_support_set_sub_task.view(-1).to(self.device)
 
                 if self.num_target_set_steps > 0 and 'task_embedding' in self.conditional_information:
                     image_embedding = self.dense_net_embedding.forward(
@@ -1806,10 +1811,10 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
         if torch.cuda.is_available():
 
             if torch.cuda.device_count() > 1:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
                 self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
             else:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
 
             self.device = torch.cuda.current_device()
 
@@ -1873,7 +1878,7 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
         the MSL (Multi Step Loss) mechanism.
         """
         loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
-                                  device=torch.cuda.current_device()) / (
+                                  device=self.device) / (
                                self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
                 self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
@@ -1881,7 +1886,7 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
         loss_weights = torch.max(input=loss_weights,
-                                 other=torch.ones(loss_weights.shape, device=torch.cuda.current_device()) * 0.001)
+                                 other=torch.ones(loss_weights.shape, device=self.device) * 0.001)
 
         loss_weights[-1] = 1. - torch.sum(loss_weights[:-1])
 
@@ -1910,9 +1915,9 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
 
         per_task_preds = []
         num_losses = 2
-        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(torch.cuda.current_device())
+        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(self.device)
         step_magnitude = (1.0 / num_losses) / self.total_epochs
-        current_epoch_step_magnitude = torch.ones(1).to(torch.cuda.current_device()) * (step_magnitude * (epoch + 1))
+        current_epoch_step_magnitude = torch.ones(1).to(self.device) * (step_magnitude * (epoch + 1))
 
         importance_vector[0] = importance_vector[0] - current_epoch_step_magnitude
         importance_vector[1] = importance_vector[1] + current_epoch_step_magnitude
@@ -1929,8 +1934,8 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
                               y_target_set)):
 
             c, h, w = x_target_set_task.shape[-3:]
-            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
-            y_target_set_task = y_target_set_task.view(-1).to(torch.cuda.current_device())
+            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(self.device)
+            y_target_set_task = y_target_set_task.view(-1).to(self.device)
             target_set_per_step_loss = []
             importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
             step_idx = 0
@@ -1948,8 +1953,8 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
                 name, value in names_weights_copy.items()}
 
                 # in the future try to adapt the features using a relational component
-                x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(torch.cuda.current_device())
-                y_support_set_sub_task = y_support_set_sub_task.view(-1).to(torch.cuda.current_device())
+                x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(self.device)
+                y_support_set_sub_task = y_support_set_sub_task.view(-1).to(self.device)
 
                 if self.num_target_set_steps > 0 and 'task_embedding' in self.conditional_information:
                     image_embedding = self.dense_net_embedding.forward(
@@ -2374,10 +2379,10 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
         if torch.cuda.is_available():
 
             if torch.cuda.device_count() > 1:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
                 self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
             else:
-                self.to(torch.cuda.current_device())
+                self.to(self.device)
 
             self.device = torch.cuda.current_device()
 
@@ -2443,7 +2448,7 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
         the MSL (Multi Step Loss) mechanism.
         """
         loss_weights = torch.ones(size=(self.number_of_training_steps_per_iter * self.num_support_sets,),
-                                  device=torch.cuda.current_device()) / (
+                                  device=self.device) / (
                                self.number_of_training_steps_per_iter * self.num_support_sets)
         early_steps_decay_rate = (1. / (
                 self.number_of_training_steps_per_iter * self.num_support_sets)) / 100.
@@ -2451,7 +2456,7 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
         loss_weights = loss_weights - (early_steps_decay_rate * current_epoch)
 
         loss_weights = torch.max(input=loss_weights,
-                                 other=torch.ones(loss_weights.shape, device=torch.cuda.current_device()) * 0.001)
+                                 other=torch.ones(loss_weights.shape, device=self.device) * 0.001)
 
         loss_weights[-1] = 1. - torch.sum(loss_weights[:-1])
 
@@ -2480,9 +2485,9 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
 
         per_task_preds = []
         num_losses = 2
-        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(torch.cuda.current_device())
+        importance_vector = torch.Tensor([1.0 / num_losses for i in range(num_losses)]).to(self.device)
         step_magnitude = (1.0 / num_losses) / self.total_epochs
-        current_epoch_step_magnitude = torch.ones(1).to(torch.cuda.current_device()) * (step_magnitude * (epoch + 1))
+        current_epoch_step_magnitude = torch.ones(1).to(self.device) * (step_magnitude * (epoch + 1))
 
         importance_vector[0] = importance_vector[0] - current_epoch_step_magnitude
         importance_vector[1] = importance_vector[1] + current_epoch_step_magnitude
@@ -2499,8 +2504,8 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
                               y_target_set)):
 
             c, h, w = x_target_set_task.shape[-3:]
-            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(torch.cuda.current_device())
-            y_target_set_task = y_target_set_task.view(-1).to(torch.cuda.current_device())
+            x_target_set_task = x_target_set_task.view(-1, c, h, w).to(self.device)
+            y_target_set_task = y_target_set_task.view(-1).to(self.device)
             target_set_per_step_loss = []
             importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
             step_idx = 0
@@ -2517,8 +2522,8 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
                     name, value in names_weights_copy.items()}
 
                 # in the future try to adapt the features using a relational component
-                x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(torch.cuda.current_device())
-                y_support_set_sub_task = y_support_set_sub_task.view(-1).to(torch.cuda.current_device())
+                x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(self.device)
+                y_support_set_sub_task = y_support_set_sub_task.view(-1).to(self.device)
 
                 if self.num_target_set_steps > 0 and 'task_embedding' in self.conditional_information:
                     image_embedding = self.dense_net_embedding.forward(
