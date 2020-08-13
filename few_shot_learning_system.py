@@ -473,16 +473,16 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         self.exclude_list = None
         self.switch_opt_params(exclude_list=self.exclude_list)
+
         self.device = torch.device('cpu')
         if torch.cuda.is_available():
+            self.device = torch.cuda.current_device()
 
             if torch.cuda.device_count() > 1:
                 self.to(self.device)
                 self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
             else:
                 self.to(self.device)
-
-            self.device = torch.cuda.current_device()
 
     def switch_opt_params(self, exclude_list):
         print("current trainable params")
@@ -999,14 +999,13 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         self.device = torch.device('cpu')
 
         if torch.cuda.is_available():
+            self.device = torch.cuda.current_device()
 
             if torch.cuda.device_count() > 1:
                 self.to(self.device)
                 self.classifier = nn.DataParallel(module=self.classifier)
             else:
                 self.to(self.device)
-
-            self.device = torch.cuda.current_device()
 
     def switch_opt_params(self, exclude_list):
         print("current trainable params")
@@ -1809,14 +1808,13 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
 
         self.device = torch.device('cpu')
         if torch.cuda.is_available():
+            self.device = torch.cuda.current_device()
 
             if torch.cuda.device_count() > 1:
                 self.to(self.device)
                 self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
             else:
                 self.to(self.device)
-
-            self.device = torch.cuda.current_device()
 
     def switch_opt_params(self, exclude_list):
         print("current trainable params")
@@ -1939,6 +1937,7 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
             target_set_per_step_loss = []
             importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
             step_idx = 0
+
             for sub_task_id, (x_support_set_sub_task, y_support_set_sub_task) in \
                     enumerate(zip(x_support_set_task,
                                   y_support_set_task)):
@@ -2377,14 +2376,13 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
 
         self.device = torch.device('cpu')
         if torch.cuda.is_available():
+            self.device = torch.cuda.current_device()
 
             if torch.cuda.device_count() > 1:
                 self.to(self.device)
                 self.dense_net_embedding = nn.DataParallel(module=self.dense_net_embedding)
             else:
                 self.to(self.device)
-
-            self.device = torch.cuda.current_device()
 
     def switch_opt_params(self, exclude_list):
         print("current trainable params")
