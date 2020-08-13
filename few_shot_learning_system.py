@@ -1130,17 +1130,19 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
             target_set_per_step_loss = []
             importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
             step_idx = 0
+
+            names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
+            num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+
+            names_weights_copy = {
+              name.replace('module.', ''): value.unsqueeze(0).repeat(
+                  [num_devices] + [1 for i in range(len(value.shape))]) for
+              name, value in names_weights_copy.items()}
+
             for sub_task_id, (x_support_set_sub_task, y_support_set_sub_task) in \
                     enumerate(zip(x_support_set_task,
                                   y_support_set_task)):
 
-                names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
-                num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
-
-                names_weights_copy = {
-                name.replace('module.', ''): value.unsqueeze(0).repeat(
-                    [num_devices] + [1 for i in range(len(value.shape))]) for
-                name, value in names_weights_copy.items()}
                 # in the future try to adapt the features using a relational component
                 x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(self.device)
                 y_support_set_sub_task = y_support_set_sub_task.view(-1).to(self.device)
@@ -1938,18 +1940,18 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
             importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
             step_idx = 0
 
+            names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters(),
+                                                                        exclude_strings=['linear_1'])
+            num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+
+            names_weights_copy = {
+              name.replace('module.', ''): value.unsqueeze(0).repeat(
+                  [num_devices] + [1 for i in range(len(value.shape))]) for
+              name, value in names_weights_copy.items()}
+
             for sub_task_id, (x_support_set_sub_task, y_support_set_sub_task) in \
                     enumerate(zip(x_support_set_task,
                                   y_support_set_task)):
-
-                names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters(),
-                                                                        exclude_strings=['linear_1'])
-                num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
-
-                names_weights_copy = {
-                name.replace('module.', ''): value.unsqueeze(0).repeat(
-                    [num_devices] + [1 for i in range(len(value.shape))]) for
-                name, value in names_weights_copy.items()}
 
                 # in the future try to adapt the features using a relational component
                 x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(self.device)
@@ -2507,17 +2509,18 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
             target_set_per_step_loss = []
             importance_weights = self.get_per_step_loss_importance_vector(current_epoch=self.current_epoch)
             step_idx = 0
+
+            names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
+            num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+
+            names_weights_copy = {
+                name.replace('module.', ''): value.unsqueeze(0).repeat(
+                    [num_devices] + [1 for i in range(len(value.shape))]) for
+                name, value in names_weights_copy.items()}
+
             for sub_task_id, (x_support_set_sub_task, y_support_set_sub_task) in \
                     enumerate(zip(x_support_set_task,
                                   y_support_set_task)):
-
-                names_weights_copy = self.get_inner_loop_parameter_dict(self.classifier.named_parameters())
-                num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
-
-                names_weights_copy = {
-                    name.replace('module.', ''): value.unsqueeze(0).repeat(
-                        [num_devices] + [1 for i in range(len(value.shape))]) for
-                    name, value in names_weights_copy.items()}
 
                 # in the future try to adapt the features using a relational component
                 x_support_set_sub_task = x_support_set_sub_task.view(-1, c, h, w).to(self.device)
