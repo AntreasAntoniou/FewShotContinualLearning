@@ -386,8 +386,8 @@ class EmbeddingMAMLFewShotClassifier(MAMLFewShotClassifier):
 
         self.current_iter = 0
 
-        output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_support_sets
+        output_units = int(self.num_classes_per_set if self.overwrite_classes_in_each_task else \
+            (self.num_classes_per_set * self.num_support_sets) / self.class_change_interval)
 
         self.classifier = VGGActivationNormNetworkWithAttention(input_shape=encoded_x.shape,
                                                                 num_output_classes=output_units,
@@ -948,8 +948,8 @@ class VGGMAMLFewShotClassifier(MAMLFewShotClassifier):
         num_target_samples = x_target_set.shape[0]
         num_support_samples = x_support_set.shape[0]
 
-        output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_support_sets
+        output_units = int(self.num_classes_per_set if self.overwrite_classes_in_each_task else \
+            (self.num_classes_per_set * self.num_support_sets) / self.class_change_interval)
 
         self.current_iter = 0
 
@@ -1446,8 +1446,8 @@ class MatchingNetworkFewShotClassifier(nn.Module):
         y_support_set = y_support_set.view(-1)
         y_target_set = y_target_set.view(-1)
 
-        output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_support_sets
+        output_units = int(self.num_classes_per_set if self.overwrite_classes_in_each_task else \
+            (self.num_classes_per_set * self.num_support_sets) / self.class_change_interval)
 
         y_support_set_one_hot = int_to_one_hot(y_support_set)
 
@@ -1715,7 +1715,7 @@ class FineTuneFromPretrainedFewShotClassifier(MAMLFewShotClassifier):
         num_support_samples = x_support_set.shape[0]
 
         output_units = int(self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-          (self.num_classes_per_set * self.num_support_sets) / self.class_change_interval)
+            (self.num_classes_per_set * self.num_support_sets) / self.class_change_interval)
 
         self.current_iter = 0
 
@@ -2283,8 +2283,8 @@ class FineTuneFromScratchFewShotClassifier(MAMLFewShotClassifier):
         num_target_samples = x_target_set.shape[0]
         num_support_samples = x_support_set.shape[0]
 
-        output_units = self.num_classes_per_set if self.overwrite_classes_in_each_task else \
-            self.num_classes_per_set * self.num_support_sets
+        output_units = int(self.num_classes_per_set if self.overwrite_classes_in_each_task else \
+            (self.num_classes_per_set * self.num_support_sets) / self.class_change_interval)
 
         self.current_iter = 0
 
