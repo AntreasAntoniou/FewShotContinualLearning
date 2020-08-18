@@ -70,9 +70,14 @@ class LSLRGradientDescentLearningRule(nn.Module):
                 if set too small learning will proceed very slowly.
         """
         super(LSLRGradientDescentLearningRule, self).__init__()
+
+        self.device = torch.device('cpu')
+        if torch.cuda.is_available():
+          self.device = torch.cuda.current_device()
+
         assert init_learning_rate > 0., 'learning_rate should be positive.'
         self.init_learning_rate = torch.ones(1) * init_learning_rate
-        self.init_learning_rate.to(torch.cuda.current_device())
+        self.init_learning_rate.to(self.device)
         self.total_num_inner_loop_steps = total_num_inner_loop_steps
         self.learnable_learning_rates = learnable_learning_rates
 
